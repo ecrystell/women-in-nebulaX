@@ -17,6 +17,8 @@ type MaintenanceEvent = {
   colour: string;
 };
 
+type PlannerPage = "overview" | "setup";
+
 const months = [
   "January", "February", "March", "April", "May", "June",
   "July", "August", "September", "October", "November", "December"
@@ -288,6 +290,40 @@ function UploadDropzone({
   );
 }
 
+const publicScheduleFiles = [
+  { name: "SCHEDULE_ACCESS.csv", description: "Activity access placement by week" },
+  { name: "SCHEDULE_OCCUPANCY.csv", description: "Location and slot assignments" },
+  { name: "RESULTS.csv", description: "Contract completion summary" }
+] as const;
+
+function PublicScheduleDownloads() {
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Public test output</p>
+      <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="text-xl font-bold text-white">Pre-computed schedule files</h2>
+          <p className="mt-1 text-sm text-slate-400">Download the published output set for the provided dataset.</p>
+        </div>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">CSV · Scenario A</span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-3">
+        {publicScheduleFiles.map((file) => (
+          <a
+            key={file.name}
+            href={railAccessApi.getPublicScheduleUrl(file.name)}
+            className="group rounded-xl border border-slate-700 bg-slate-900/70 p-3 transition hover:border-red-400 hover:bg-red-500/10"
+          >
+            <p className="font-mono text-sm font-bold text-white">{file.name}</p>
+            <p className="mt-1 text-xs text-slate-400">{file.description}</p>
+            <p className="mt-3 text-xs font-bold text-red-200 group-hover:text-red-100">Download CSV ↓</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function SubmissionEvidencePanel({
   run,
   busy,
@@ -452,6 +488,7 @@ export default function App() {
   const [demandFiles, setDemandFiles] = useState<File[]>([]);
   const [updateFiles, setUpdateFiles] = useState<File[]>([]);
   const [scenario, setScenario] = useState<Scenario>("A");
+  const [page, setPage] = useState<PlannerPage>("overview");
   const [refreshNotice, setRefreshNotice] = useState("Upload a demand book or disruption event, then select a scenario to prepare an optimisation run.");
   const [run, setRun] = useState<RunView | null>(null);
   const [runBusy, setRunBusy] = useState(false);
@@ -487,6 +524,7 @@ export default function App() {
       setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
       setDemandFiles([]);
       setUpdateFiles([]);
+      setPage("overview");
     } catch (error) {
       const detail = error instanceof RailAccessApiError ? error.message : "The run could not be started.";
       setRefreshNotice(detail);
@@ -538,100 +576,114 @@ export default function App() {
       </div>
 
       <section className="relative z-10 mx-auto max-w-7xl pb-20">
-        <header className="planner-toolbar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="editorial-title text-xl font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
+        <header className="planner-toolbar">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="editorial-title text-lg font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
           </div>
-          <div className="flex flex-wrap gap-2 text-xs">
+          <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs">
             <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">API {health?.status ?? "connecting"}</span>
             <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">Validator: {validatorStatus}</span>
           </div>
         </header>
 
-        <div aria-hidden="true" className="train-viewpoint" />
-
-        <div className="mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
-          <TrackDiagram activeStation={activeEvent?.station ?? null} />
-          <Calendar
-            month={month}
-            year={year}
-            activeEvent={activeEvent}
-            onMonthChange={changeMonth}
-            onYearChange={(direction) => setYear((current) => current + direction)}
-            onEventHover={setActiveEvent}
-          />
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => setPage((current) => current === "overview" ? "setup" : "overview")}
+            className="rounded-lg border border-red-400 bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-red-950/35 transition hover:bg-red-400"
+          >
+            {page === "overview" ? "Build / update schedule" : "← Tracks overview"}
+          </button>
         </div>
 
-        <section className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]">
-          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03 · Build schedule</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
-            <div className="mt-4">
-              <UploadDropzone
-                id="demand-book"
-                title="Official demand book"
-                description="01_LINES through 08_ACTIVITY_DETAILS · CSV only"
-                files={demandFiles}
-                multiple
-                onFiles={setDemandFiles}
+        {page === "overview" ? (
+          <>
+            <div aria-hidden="true" className="train-viewpoint" />
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
+              <TrackDiagram activeStation={activeEvent?.station ?? null} />
+              <Calendar
+                month={month}
+                year={year}
+                activeEvent={activeEvent}
+                onMonthChange={changeMonth}
+                onYearChange={(direction) => setYear((current) => current + direction)}
+                onEventHover={setActiveEvent}
               />
             </div>
-            <p className={`mt-3 text-xs font-semibold ${demandBookReady ? "text-emerald-300" : "text-slate-500"}`}>
-              {demandBookReady ? "Demand book complete — ready for validation." : `${Math.max(0, 8 - demandFiles.length)} of 8 required files still needed.`}
-            </p>
-          </div>
-
-          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Update event</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
-            <div className="mt-4">
-              <UploadDropzone
-                id="update-event"
-                title="Updated event CSV"
-                description="One approved scenario change · CSV only"
-                files={updateFiles}
-                multiple={false}
-                onFiles={setUpdateFiles}
-              />
+            <SubmissionEvidencePanel
+              run={run}
+              busy={runBusy}
+              notice=""
+              onCreatePackage={createSubmissionPackage}
+              onRecordEvidence={recordEvidence}
+            />
+            <PublicScheduleDownloads />
+          </>
+        ) : (
+          <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
+            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03 · Build schedule</p>
+              <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
+              <div className="mt-4">
+                <UploadDropzone
+                  id="demand-book"
+                  title="Official demand book"
+                  description="01_LINES through 08_ACTIVITY_DETAILS · CSV only"
+                  files={demandFiles}
+                  multiple
+                  onFiles={setDemandFiles}
+                />
+              </div>
+              <p className={`mt-3 text-xs font-semibold ${demandBookReady ? "text-emerald-300" : "text-slate-500"}`}>
+                {demandBookReady ? "Demand book complete — ready for validation." : `${Math.max(0, 8 - demandFiles.length)} of 8 required files still needed.`}
+              </p>
             </div>
-            <p className="mt-3 text-xs text-slate-500">Confirmed work will remain locked when the recovery optimiser is connected.</p>
-          </div>
 
-          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {(["A", "B", "C"] as Scenario[]).map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setScenario(option)}
-                  className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
-                >
-                  {option}
-                </button>
-              ))}
+            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Update event</p>
+              <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
+              <div className="mt-4">
+                <UploadDropzone
+                  id="update-event"
+                  title="Updated event CSV"
+                  description="One approved scenario change · CSV only"
+                  files={updateFiles}
+                  multiple={false}
+                  onFiles={setUpdateFiles}
+                />
+              </div>
+              <p className="mt-3 text-xs text-slate-500">Confirmed work will remain locked when the recovery optimiser is connected.</p>
             </div>
-            <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
-            <button
-              disabled={!scheduleInputReady || runBusy}
-              onClick={() => void startRun()}
-              className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-            >
-              {runBusy ? "Running schedule…" : "Run schedule"}
-            </button>
-            <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>
-          </div>
-        </section>
-        <SubmissionEvidencePanel
-          run={run}
-          busy={runBusy}
-          notice=""
-          onCreatePackage={createSubmissionPackage}
-          onRecordEvidence={recordEvidence}
-        />
+
+            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
+              <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {(["A", "B", "C"] as Scenario[]).map((option) => (
+                  <button
+                    key={option}
+                    onClick={() => setScenario(option)}
+                    className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
+              <button
+                disabled={!scheduleInputReady || runBusy}
+                onClick={() => void startRun()}
+                className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {runBusy ? "Running schedule…" : "Run schedule"}
+              </button>
+              <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>
+            </div>
+          </section>
+        )}
       </section>
       <GroundedCopilot run={run} />
     </main>

@@ -7,6 +7,10 @@ const TRACK_ANGLE = 0.26;
 const sideWindows = [-3.85, -3.2, -1.3, -0.68, 0.68, 1.3, 3.2, 3.85];
 const doorPositions = [-2.25, 0, 2.25];
 
+function trackOffsetForZ(z: number) {
+  return MathUtils.clamp((z + 36) / 39, 0, 1) * 4.2;
+}
+
 function C151CabFront() {
   const shell = useMemo(() => new RoundedBoxGeometry(2.88, 1.92, 1.06, 6, 0.23), []);
   const windscreen = useMemo(() => new RoundedBoxGeometry(2.26, 1.04, 0.1, 5, 0.15), []);
@@ -234,7 +238,8 @@ function Train() {
     // Starts briskly, but never reaches the end before the page scroll does.
     const progress = Math.pow(scrollPosition, 0.7);
     const targetZ = -20 + progress * 23;
-    const targetX = progress * 4.2;
+    // Follow the same angled centreline used by the rail bed at every depth.
+    const targetX = trackOffsetForZ(targetZ);
 
     train.current.position.z = MathUtils.damp(train.current.position.z, targetZ, 4, delta);
     train.current.position.x = MathUtils.damp(train.current.position.x, targetX, 4, delta);
@@ -253,8 +258,7 @@ function Train() {
 function RailBed() {
   const sections = Array.from({ length: 16 }, (_, index) => {
     const z = -48 + index * 4.5;
-    const progress = Math.min(Math.max((z + 36) / 39, 0), 1);
-    return { z, x: progress * 4.2 };
+    return { z, x: trackOffsetForZ(z) };
   });
 
   return (

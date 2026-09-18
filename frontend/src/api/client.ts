@@ -62,6 +62,7 @@ export const railAccessApi = {
       body: JSON.stringify(payload)
     }),
   getExportUrl: (runId: string, filename: string) => `/api/v1/runs/${runId}/exports/${filename}`,
+  getPublicScheduleUrl: (filename: string) => `/api/v1/public-schedule/${filename}`,
   getSubmissionPackageUrl: (runId: string, packageId: string) =>
     `/api/v1/runs/${runId}/submission-packages/${packageId}/download`,
   getEvidenceRecordUrl: (runId: string, packageId: string) =>

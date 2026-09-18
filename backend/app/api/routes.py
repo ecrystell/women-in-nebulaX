@@ -36,6 +36,7 @@ ALLOWED_EXPORTS = frozenset({"SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "R
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_PACKAGE_BYTES = 40 * 1024 * 1024
+PUBLIC_SCHEDULE_DIR = Path(__file__).resolve().parents[3] / "data" / "public-instance" / "sample-submission"
 
 
 def get_service(request: Request) -> RunService:
@@ -194,6 +195,17 @@ def download_export(request: Request, run_id: str, filename: str) -> FileRespons
             "export_unavailable",
             "Exports are available only after a candidate schedule succeeds.",
         )
+    return FileResponse(path, media_type="text/csv", filename=filename, headers=NO_STORE_HEADERS)
+
+
+@router.get("/public-schedule/{filename}")
+def download_public_schedule(filename: str) -> FileResponse:
+    """Download the published fixture outputs used to demonstrate the solver."""
+    if filename not in ALLOWED_EXPORTS:
+        raise ApiException(404, "export_not_found", "The requested export filename is not supported.")
+    path = PUBLIC_SCHEDULE_DIR / filename
+    if not path.is_file():
+        raise ApiException(404, "public_export_not_found", "The published schedule output is unavailable.")
     return FileResponse(path, media_type="text/csv", filename=filename, headers=NO_STORE_HEADERS)
 
 
