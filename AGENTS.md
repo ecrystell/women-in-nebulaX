@@ -261,3 +261,114 @@ The differentiator is a validated optimiser with a trustworthy controller experi
 - [ ] Grounded LLM tools cannot mutate or declare feasibility without confirmation and re-validation.
 - [ ] README documents setup, data handling, architecture, validation, and demo instructions.
 - [ ] GitLab repository URL, hosted URL, three-minute video, public outputs, and ZIP/write-up are prepared.
+
+## Person 4 implementation roadmap and current state
+
+This is the delivery checklist for the custom-validator, integration, and grounded-LLM work. It distinguishes code that exists today from work that depends on the Person 1/2 solver. A locally clean preflight means only **local checks passed**; it must remain `unverified` until the organiser website has accepted the exact three exported files.
+
+### Completed foundation
+
+| Item | Status | Evidence / boundary |
+| --- | --- | --- |
+| Versioned contracts | Complete | `/api/v1` Pydantic request/response models implement `InputInstance`, `Schedule`, `ValidationReport`, `ScenarioChange`, and `ScheduleDiff`. API errors carry a request ID, stable code, message, and field errors. |
+| Eight-file intake | Complete | `POST /api/v1/runs` accepts exactly the eight official filenames, parses the typed CSV records synchronously, and returns actionable package/schema errors. Uploaded inputs exist only in process memory after parsing. |
+| Run lifecycle | Complete shell | In-memory runs support `accepted`, `running`, `succeeded`, `failed`, and `blocked`. With no solver connected, a valid upload becomes `blocked` with `solver_unavailable`; it never receives an invented schedule. |
+| Solver integration seam | Complete shell | `SolverAdapter` accepts `InputInstance`, scenario, and optional confirmed `ScenarioChange`, returning the canonical schedule and optional diff. Person 2 replaces only this adapter implementation. |
+| Export integration | Complete shell | Successful candidates can produce the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory. |
+| Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
+| Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
+| API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
+| Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
+| Regression and container checks | Complete foundation | Pytest covers upload failures, lifecycle states, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds and the preflight command run against the vendored public sample. |
+| Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
+
+### Remaining implementation roadmap
+
+#### R4.1 — Align the shared preprocessing handoff
+
+**Dependency:** Person 1 owns the domain/preprocessing implementation; Person 2 consumes it in CP-SAT.
+
+- Move route expansion, buffer expansion, Live mirroring, and H01/H02 crossover from the current preflight helper into a shared, tested domain module owned by Person 1.
+- Make both Person 2's solver and Person 4's preflight consume those same derived objects. Do not maintain two semantic implementations of topology or closure rules.
+- Agree the derived-object interface: activity footprint, closure footprint, legal possession information, planning-week conversion, predecessor graph, and row/field diagnostic format.
+- Add cross-file and malformed-topology fixtures at the shared preprocessing boundary.
+
+**Done when:** the solver and validator use one tested preprocessing representation and no Person 4 module independently interprets railway topology.
+
+#### R4.2 — Complete deterministic validator coverage
+
+**Dependency:** the shared preprocessing handoff and organiser clarification/reference-validator observations.
+
+- Replace the current closure-order warning with deterministic checks once the legal global possession-time representation is agreed or observed from the organiser validator.
+- Confirm exact organiser rule tags, report fields, completion-date semantics, and score calculations using recorded website submissions.
+- Add a minimal valid/invalid fixture for every rule-matrix row, including buffer collision, Live mirroring, H01/H02 crossover, Scenario C cross-line ECLO continuity, and exact scoring examples.
+- Add structured evidence for each finding: activity IDs, locations, week, possession group, derived footprint, and the applicable input values.
+- Keep local status separate from organiser status: `unverified` is not `verified`; only organiser evidence may set `feasible=true` for competition claims.
+
+**Done when:** every published hard rule has deterministic coverage, a fixture, a stable local tag, and organiser evidence or an explicit documented uncertainty.
+
+#### R4.3 — Connect the real solver and enforce run gates
+
+**Dependency:** Person 2's `SolverAdapter` implementation and Person 1's preprocessing output.
+
+- Replace `UnavailableSolver` with the real Scenario A adapter first, then extend the same path to B and C.
+- Record CP-SAT status and diagnostics; accept only `FEASIBLE` or `OPTIMAL` candidates from the solver.
+- Run local preflight before marking a run `succeeded`; expose violations and score evidence in the run response.
+- Decide and implement the export policy: locally hard-invalid candidates must be clearly rejected or labelled diagnostic-only, never presented as a ready submission.
+- Add bounded solver timeout, safe exception handling, temporary-export cleanup, and explicit expired/restarted-run behaviour.
+- Add end-to-end tests: public eight-file upload → preprocessing → solver → preflight → three exports → API response.
+
+**Done when:** a real public-instance Scenario A run travels through one API path and produces a locally clean, unverified export set with reproducible evidence.
+
+#### R4.4 — Add organiser-website submission evidence workflow
+
+**Dependency:** a locally clean real schedule and the team's five-attempt upload budget.
+
+- Create a submission manifest for each planned organiser upload: scenario, Git commit, input checksums, output checksums, local preflight report, and generated timestamp.
+- Provide a clear manual upload bundle/download without persisting hidden input data.
+- Add a controlled way to attach the organiser website's returned report or screenshot metadata to the run evidence once its stable format is known.
+- Track the limited attempts in repository-safe documentation using only public-instance data; never commit hidden instances or their exports.
+
+**Done when:** every organiser attempt is reproducible, attributable to one exact export set, and visibly distinguished from local preflight evidence.
+
+#### R4.5 — Finish recovery integration
+
+**Dependency:** Person 2's locked-work recovery model and `ScheduleDiff` implementation; Person 3's confirmation UI.
+
+- Pass only confirmed supply overrides and locked placement keys to the recovery solver.
+- Validate the recovered result with the same preflight and organiser-evidence lifecycle as a baseline run.
+- Return deterministic `ScheduleDiff`, score deltas, completion deltas, preserved-work counts, and change-budget evidence.
+- Test rejected drafts, invalid locks, no-candidate bases, solver failures, and no workload loss during recovery.
+
+**Done when:** a controller-confirmed disruption yields a fresh, evidence-backed recovered schedule without silently moving locked work.
+
+#### R4.6 — Add grounded LLM tools last
+
+**Dependency:** stable schedule, validator, score, hotspot, and recovery evidence.
+
+- Implement read-only structured tools: `explain_activity`, `get_capacity_hotspots`, and `summarise_plan`.
+- Implement a what-if parser that creates only a draft `ScenarioChange`; the user must confirm it before the recovery API runs.
+- Ground every response in run evidence and include the schedule/validation version used.
+- Add prompt/tool tests proving the LLM cannot assign placements, alter rail-rule facts, declare feasibility, or execute a change.
+
+**Done when:** LLM output is useful explanation around deterministic evidence, never a second scheduler or validator.
+
+#### R4.7 — Deploy and rehearse
+
+**Dependency:** real Scenario A/B/C schedules, stable UI, and validator evidence workflow.
+
+- Add Cloud Run configuration, environment validation, production request limits/timeouts, health/readiness checks, and temporary-file cleanup.
+- Run clean-machine Docker and API smoke tests.
+- Rehearse a hidden-instance upload without retaining its data, plus the public A/B/C and recovery demo flows.
+- Produce a release checklist covering validator evidence, exports, API/UI versions, demo assets, and rollback-safe deployment.
+
+**Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
+
+### Person 4 sequencing and dependencies
+
+1. **Now:** maintain the API/preflight tests, agree the shared preprocessing interface, and prepare the organiser-evidence manifest format.
+2. **After Person 1/2 Scenario A:** integrate the real solver and enforce the run/export gate.
+3. **After first organiser evidence:** close validator ambiguities and complete rule fixtures.
+4. **After A/B/C and recovery are stable:** add grounded LLM tools and Cloud Run deployment.
+
+Person 4 does **not** build a competing preprocessor or scheduler. Person 4 integrates and validates the canonical output from Persons 1/2, gives Person 3 stable evidence, and preserves the distinction between local preflight and organiser verification.
