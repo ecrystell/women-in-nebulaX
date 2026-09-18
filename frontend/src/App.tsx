@@ -74,17 +74,34 @@ const stars = [
 ] as const;
 
 function TrackDiagram({ activeStation }: { activeStation: string | null }) {
-  const alphaStations = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"];
+  const alphaTopStations = ["S01", "S02", "S03", "S04"];
+  const alphaBottomStations = ["S05", "S06", "S07", "S08"];
   const betaStations = ["S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18"];
-  const stationPositions = [350, 420, 490, 560, 730, 800, 870, 920];
+  const alphaTopPositions = [350, 425, 500, 575];
+  const alphaBottomPositions = [675, 750, 825, 900];
+  const betaPositions = [350, 430, 510, 590, 670, 750, 830, 910];
 
   const stationNode = (name: string, x: number, y: number, colour: string) => {
     const active = name === activeStation;
     return (
       <g key={name}>
-        {active && <circle cx={x} cy={y} r="19" fill={colour} opacity="0.18" />}
-        <circle cx={x} cy={y} r={active ? "10" : "8"} fill="#111827" stroke={colour} strokeWidth={active ? "5" : "3"} />
-        <text x={x} y={y - 26} textAnchor="middle" fill={active ? "#f8fafc" : "#e2e8f0"} fontSize="15" fontWeight="700">{name}</text>
+        {active && <circle cx={x} cy={y} r="28" fill={colour} opacity="0.32" />}
+        <circle cx={x} cy={y} r={active ? "16" : "12"} fill={colour} stroke={active ? "#f8fafc" : colour} strokeWidth={active ? "4" : "2"} />
+        <circle cx={x} cy={y} r={active ? "6" : "4"} fill="#0f172a" opacity="0.55" />
+        <text x={x} y={y - 30} textAnchor="middle" fill={active ? "#ffffff" : "#e2e8f0"} fontSize="15" fontWeight="800">{name}</text>
+      </g>
+    );
+  };
+
+  const interchangeNode = (name: string, x: number) => {
+    const active = name === activeStation;
+    return (
+      <g key={name}>
+        {active && <circle cx={x} cy="220" r="33" fill="#fbbf24" opacity="0.35" />}
+        <circle cx={x} cy="220" r={active ? "19" : "15"} fill="#fbbf24" stroke={active ? "#fff7cc" : "#fef3c7"} strokeWidth={active ? "4" : "2"} />
+        <circle cx={x} cy="220" r="7" fill="#92400e" />
+        <text x={x} y="185" textAnchor="middle" fill="#fef3c7" fontSize="16" fontWeight="800">{name}</text>
+        <text x={x} y="250" textAnchor="middle" fill="#fcd34d" fontSize="8" fontWeight="800" letterSpacing="0.8">INTERCHANGE</text>
       </g>
     );
   };
@@ -102,22 +119,26 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
         </div>
       </div>
 
-      <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
+      <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 350" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
+        <rect x="10" y="88" width="60" height="28" rx="6" fill="#df5750" />
+        <text x="40" y="107" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
+        <text x="82" y="107" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
+        <text x="302" y="87" fill="#fca5a5" fontSize="10" fontWeight="700" letterSpacing="1">ROW 1</text>
+        {alphaTopStations.map((station, index) => stationNode(station, alphaTopPositions[index], 112, "#e45850"))}
+        <text x="627" y="142" fill="#fca5a5" fontSize="10" fontWeight="700" letterSpacing="1">ROW 2</text>
+        {alphaBottomStations.map((station, index) => stationNode(station, alphaBottomPositions[index], 167, "#e45850"))}
 
-        <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
-        <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
-        <text x="82" y="115" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
-        {alphaStations.map((station, index) => stationNode(station, stationPositions[index], 118, "#e45850"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 118, "#f4c15c"))}
+        <text x="500" y="198" textAnchor="middle" fill="#fde68a" fontSize="11" fontWeight="800" letterSpacing="1.4">ALP ↔ BET INTERCHANGES</text>
+        {interchangeNode("H01", 460)}
+        {interchangeNode("H02", 540)}
 
-        <rect x="10" y="238" width="60" height="28" rx="6" fill="#5fc486" />
-        <text x="40" y="257" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
-        <text x="82" y="257" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
-        {betaStations.map((station, index) => stationNode(station, stationPositions[index], 260, "#63c38a"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 260, "#f4c15c"))}
+        <rect x="10" y="282" width="60" height="28" rx="6" fill="#5fc486" />
+        <text x="40" y="301" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
+        <text x="82" y="301" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
+        {betaStations.map((station, index) => stationNode(station, betaPositions[index], 302, "#63c38a"))}
       </svg>
       <p className="mt-2 text-xs leading-5 text-slate-400">
-        Hover a maintenance date to highlight its station marker. H01 and H02 are controlled access points.
+        Hover a maintenance date to make its solid station marker glow. H01 and H02 connect both lines.
       </p>
     </section>
   );
