@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -11,13 +12,15 @@ from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
 from fastapi.responses import FileResponse
 
 from app.api.errors import ApiException
-from app.api.run_service import RunService
+from app.api.run_service import RunService, SubmissionPackageError
 from app.api.schemas import (
     ApiFieldError,
     InputInstance,
     InputSource,
+    OrganiserEvidenceInput,
     RunView,
     ScenarioChange,
+    SubmissionPackageSummary,
 )
 from app.domain.models import Scenario
 from app.ingestion.csv_loader import INPUT_TABLES, InstanceLoadError, load_instance
@@ -53,6 +56,7 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
 
     with tempfile.TemporaryDirectory(prefix="railaccess-upload-") as temp_dir:
         directory = Path(temp_dir)
+        file_checksums: dict[str, str] = {}
         for upload in files:
             filename = upload.filename or ""
             if Path(filename).name != filename:
@@ -62,7 +66,9 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
                     "CSV filenames must not include a directory path.",
                     [ApiFieldError(field="files", message=f"invalid filename: {filename}")],
                 )
-            (directory / filename).write_bytes(await upload.read())
+            contents = await upload.read()
+            file_checksums[filename] = hashlib.sha256(contents).hexdigest()
+            (directory / filename).write_bytes(contents)
         try:
             bundle = load_instance(directory)
         except (InstanceLoadError, UnicodeDecodeError) as error:
@@ -79,6 +85,7 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
             instance_id=str(uuid4()),
             received_at=datetime.now(timezone.utc),
             fixture=False,
+            file_checksums=file_checksums,
         ),
     )
 
@@ -138,6 +145,64 @@ def download_export(request: Request, run_id: str, filename: str) -> FileRespons
             "Exports are available only after a candidate schedule succeeds.",
         )
     return FileResponse(path, media_type="text/csv", filename=filename)
+
+
+def _submission_exception(error: SubmissionPackageError) -> ApiException:
+    if error.code in {"run_not_found", "submission_package_not_found"}:
+        status = 404
+    elif error.code == "submission_package_failed":
+        status = 500
+    else:
+        status = 409
+    return ApiException(status, error.code, str(error))
+
+
+@router.post("/runs/{run_id}/submission-packages", response_model=SubmissionPackageSummary, status_code=201)
+def create_submission_package(request: Request, run_id: str) -> SubmissionPackageSummary:
+    try:
+        return get_service(request).create_submission_package(run_id).to_summary()
+    except SubmissionPackageError as error:
+        raise _submission_exception(error) from error
+
+
+@router.get("/runs/{run_id}/submission-packages/{package_id}/download")
+def download_submission_package(request: Request, run_id: str, package_id: str) -> FileResponse:
+    try:
+        package = get_service(request).get_submission_package(run_id, package_id)
+    except SubmissionPackageError as error:
+        raise _submission_exception(error) from error
+    if not package.bundle_path.is_file():
+        raise ApiException(409, "submission_package_unavailable", "The submission package is no longer available.")
+    return FileResponse(
+        package.bundle_path,
+        media_type="application/zip",
+        filename=f"railaccess-submission-{package_id}.zip",
+    )
+
+
+@router.post(
+    "/runs/{run_id}/submission-packages/{package_id}/organiser-evidence",
+    response_model=SubmissionPackageSummary,
+)
+def record_organiser_evidence(
+    request: Request,
+    run_id: str,
+    package_id: str,
+    payload: OrganiserEvidenceInput,
+) -> SubmissionPackageSummary:
+    try:
+        return get_service(request).record_organiser_evidence(run_id, package_id, payload).to_summary()
+    except SubmissionPackageError as error:
+        raise _submission_exception(error) from error
+
+
+@router.get("/runs/{run_id}/submission-packages/{package_id}/evidence-record")
+def download_evidence_record(request: Request, run_id: str, package_id: str) -> FileResponse:
+    try:
+        path = get_service(request).get_evidence_record(run_id, package_id)
+    except SubmissionPackageError as error:
+        raise _submission_exception(error) from error
+    return FileResponse(path, media_type="application/json", filename=f"railaccess-evidence-{package_id}.json")
 
 
 @router.post("/runs/{run_id}/recovery", response_model=RunView, status_code=202)

@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
 import shutil
 import tempfile
+import zipfile
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -17,11 +21,16 @@ from app.api.schemas import (
     RunProblem,
     RunStatus,
     RunView,
+    OrganiserEvidence,
+    OrganiserEvidenceInput,
     ScenarioChange,
     Schedule,
     ScheduleDiff,
+    SubmissionManifest,
+    SubmissionPackageSummary,
     ValidationReport,
 )
+from app.ingestion.csv_loader import INPUT_TABLES
 from app.domain.models import Scenario, ScenarioSchedule
 from app.domain.preprocessing import PreparedInstance, prepare_instance
 from app.exports.csv_writer import write_submission
@@ -47,6 +56,34 @@ class SolverAdapter(Protocol):
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ) -> SolverOutput: ...
+
+
+class SubmissionPackageError(ValueError):
+    """A package or evidence operation cannot be completed for this run."""
+
+    def __init__(self, code: str, message: str) -> None:
+        self.code = code
+        super().__init__(message)
+
+
+@dataclass
+class SubmissionPackageRecord:
+    manifest: SubmissionManifest
+    directory: Path
+    bundle_path: Path
+    organiser_evidence: OrganiserEvidence | None = None
+    evidence_record_path: Path | None = None
+
+    def to_summary(self) -> SubmissionPackageSummary:
+        return SubmissionPackageSummary(
+            package_id=self.manifest.package_id,
+            run_id=self.manifest.run_id,
+            schedule_id=self.manifest.schedule_id,
+            scenario=self.manifest.scenario,
+            created_at=self.manifest.created_at,
+            build_commit=self.manifest.build_commit,
+            organiser_evidence=self.organiser_evidence,
+        )
 
 
 class UnavailableSolver:
@@ -76,6 +113,7 @@ class RunRecord:
     schedule_diff: ScheduleDiff | None = None
     problem: RunProblem | None = None
     export_dir: Path | None = None
+    submission_packages: dict[str, SubmissionPackageRecord] = field(default_factory=dict)
 
     def to_view(self) -> RunView:
         return RunView(
@@ -90,6 +128,10 @@ class RunRecord:
             validation_report=self.validation_report,
             schedule_diff=self.schedule_diff,
             problem=self.problem,
+            submission_packages=[
+                package.to_summary()
+                for package in sorted(self.submission_packages.values(), key=lambda item: item.manifest.created_at)
+            ],
         )
 
 
@@ -239,6 +281,138 @@ class RunService:
             return None
         path = record.export_dir / filename
         return path if path.is_file() else None
+
+    @staticmethod
+    def _build_commit() -> str | None:
+        value = os.getenv("RAILACCESS_BUILD_COMMIT", "").strip().lower()
+        if len(value) == 40 and all(character in "0123456789abcdef" for character in value):
+            return value
+        return None
+
+    @staticmethod
+    def _checksum(path: Path) -> str:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+
+    def create_submission_package(self, run_id: str) -> SubmissionPackageRecord:
+        record = self.store.get(run_id)
+        if record is None:
+            raise SubmissionPackageError("run_not_found", f"No run exists with id {run_id}.")
+        report = record.validation_report
+        if (
+            record.status != RunStatus.SUCCEEDED
+            or record.schedule is None
+            or record.export_dir is None
+            or report is None
+            or report.status.value != "unverified"
+            or report.feasible is not None
+            or report.hard_violations
+        ):
+            raise SubmissionPackageError(
+                "submission_unavailable",
+                "A submission package requires a locally clean, unverified succeeded run.",
+            )
+        build_commit = self._build_commit()
+        if build_commit is None:
+            raise SubmissionPackageError(
+                "submission_provenance_unavailable",
+                "Set RAILACCESS_BUILD_COMMIT to the full 40-character Git commit before creating a submission package.",
+            )
+        expected_inputs = set(INPUT_TABLES)
+        if set(record.input_instance.source.file_checksums) != expected_inputs:
+            raise SubmissionPackageError(
+                "submission_provenance_unavailable",
+                "This run does not retain checksums for all eight original input CSVs.",
+            )
+        export_names = ("SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "RESULTS.csv")
+        export_paths = {name: record.export_dir / name for name in export_names}
+        if not all(path.is_file() for path in export_paths.values()):
+            raise SubmissionPackageError(
+                "submission_unavailable",
+                "The required export CSVs are no longer available for this run.",
+            )
+
+        package_id = str(uuid4())
+        package_dir = record.export_dir / f"submission-{package_id}"
+        try:
+            package_dir.mkdir()
+            manifest = SubmissionManifest(
+                package_id=package_id,
+                run_id=record.run_id,
+                schedule_id=record.schedule.schedule_id,
+                scenario=record.scenario,
+                created_at=utc_now(),
+                build_commit=build_commit,
+                input_checksums=dict(sorted(record.input_instance.source.file_checksums.items())),
+                output_checksums={name: self._checksum(path) for name, path in export_paths.items()},
+                input_row_counts=InputInstanceSummary.from_instance(record.input_instance).row_counts,
+                local_preflight_report=report.model_copy(deep=True),
+            )
+            manifest_path = package_dir / "submission-manifest.json"
+            manifest_path.write_text(json.dumps(manifest.model_dump(mode="json"), indent=2) + "\n", encoding="utf-8")
+            bundle_path = package_dir / "submission-package.zip"
+            with zipfile.ZipFile(bundle_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+                for filename in export_names:
+                    archive.write(export_paths[filename], arcname=filename)
+                archive.write(manifest_path, arcname=manifest_path.name)
+        except Exception as error:
+            shutil.rmtree(package_dir, ignore_errors=True)
+            raise SubmissionPackageError("submission_package_failed", f"Could not create the submission package: {error}") from error
+
+        package = SubmissionPackageRecord(manifest=manifest, directory=package_dir, bundle_path=bundle_path)
+        record.submission_packages[package_id] = package
+        record.updated_at = utc_now()
+        return package
+
+    def get_submission_package(self, run_id: str, package_id: str) -> SubmissionPackageRecord:
+        record = self.store.get(run_id)
+        if record is None:
+            raise SubmissionPackageError("run_not_found", f"No run exists with id {run_id}.")
+        package = record.submission_packages.get(package_id)
+        if package is None:
+            raise SubmissionPackageError("submission_package_not_found", f"No submission package {package_id} exists for this run.")
+        return package
+
+    def record_organiser_evidence(
+        self, run_id: str, package_id: str, payload: OrganiserEvidenceInput
+    ) -> SubmissionPackageRecord:
+        record = self.store.get(run_id)
+        package = self.get_submission_package(run_id, package_id)
+        assert record is not None  # get_submission_package has already checked this.
+        if package.organiser_evidence is not None:
+            raise SubmissionPackageError(
+                "organiser_evidence_exists",
+                "This submission package already has organiser evidence. Create a new package for another upload.",
+            )
+        used_attempts = {
+            item.organiser_evidence.attempt_number
+            for item in record.submission_packages.values()
+            if item.organiser_evidence is not None
+        }
+        if payload.attempt_number in used_attempts:
+            raise SubmissionPackageError(
+                "organiser_attempt_duplicate",
+                f"Attempt {payload.attempt_number} is already recorded for this live run.",
+            )
+        evidence = OrganiserEvidence(**payload.model_dump(), recorded_at=utc_now())
+        evidence_path = package.directory / "organiser-evidence.json"
+        evidence_record = {
+            "submission_manifest": package.manifest.model_dump(mode="json"),
+            "organiser_evidence": evidence.model_dump(mode="json"),
+        }
+        evidence_path.write_text(json.dumps(evidence_record, indent=2) + "\n", encoding="utf-8")
+        package.organiser_evidence = evidence
+        package.evidence_record_path = evidence_path
+        record.updated_at = utc_now()
+        return package
+
+    def get_evidence_record(self, run_id: str, package_id: str) -> Path:
+        package = self.get_submission_package(run_id, package_id)
+        if package.evidence_record_path is None or not package.evidence_record_path.is_file():
+            raise SubmissionPackageError(
+                "organiser_evidence_unavailable",
+                "Record organiser metadata before downloading the combined evidence record.",
+            )
+        return package.evidence_record_path
 
     def create_recovery(self, base_run_id: str, change: ScenarioChange) -> RunRecord | None:
         base = self.store.get(base_run_id)

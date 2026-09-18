@@ -155,6 +155,23 @@ docker compose run --rm app python -m app.validation.preflight `
 
 Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. It expands buffer/Live/interchange footprints, but cannot prove the ordering of distinct possession groups from the published output schema; use the organiser website for that final closure decision and every feasibility claim.
 
+### Manual organiser submission evidence
+
+Set a full Git commit before building the package-capable container:
+
+```powershell
+$env:RAILACCESS_BUILD_COMMIT = git rev-parse HEAD
+docker compose up --build
+```
+
+After a locally clean succeeded run, the controller can create a ZIP containing
+the three official CSVs plus an immutable checksum manifest. Upload the CSVs
+manually on the organiser website, then record only structured result metadata
+and download the combined evidence JSON. This data is held only for the live
+process and must be retained outside Git. An organiser-reported outcome remains
+`unverified`; it never sets `feasible=true` without a supported organiser report
+integration. See [`docs/ORGANISER_SUBMISSION_PLAYBOOK.md`](docs/ORGANISER_SUBMISSION_PLAYBOOK.md).
+
 ### Scenario A solver (implemented)
 
 Run the deterministic CP-SAT Scenario A solver directly without starting the frontend:

@@ -1,6 +1,7 @@
 export type Scenario = "A" | "B" | "C";
 export type ValidationStatus = "unavailable" | "unverified" | "verified";
 export type RunStatus = "accepted" | "running" | "succeeded" | "failed" | "blocked";
+export type OrganiserReportedOutcome = "unknown" | "accepted" | "rejected";
 
 export type PlacementKey = { activity_id: string; access_seq: number };
 export type Occupancy = { location_id: string; co_share_group: string };
@@ -63,6 +64,27 @@ export type ScheduleDiff = {
   moved_count: number;
 };
 
+export type OrganiserEvidenceInput = {
+  attempt_number: number;
+  submitted_at: string;
+  reported_outcome: OrganiserReportedOutcome;
+  report_reference?: string;
+  report_sha256?: string;
+  note?: string;
+};
+
+export type OrganiserEvidence = OrganiserEvidenceInput & { recorded_at: string };
+
+export type SubmissionPackageSummary = {
+  package_id: string;
+  run_id: string;
+  schedule_id: string;
+  scenario: Scenario;
+  created_at: string;
+  build_commit: string;
+  organiser_evidence?: OrganiserEvidence;
+};
+
 export type RunView = {
   run_id: string;
   status: RunStatus;
@@ -75,6 +97,7 @@ export type RunView = {
   validation_report?: ValidationReport;
   schedule_diff?: ScheduleDiff;
   problem?: { code: string; message: string };
+  submission_packages: SubmissionPackageSummary[];
 };
 
 export type Health = {

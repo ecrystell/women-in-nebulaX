@@ -297,6 +297,7 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Export integration | Complete for locally clean candidates | Only a zero-hard-violation local candidate produces the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory; a clean result is still `unverified`. |
 | Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
 | R4.2A local validator evidence and fixture coverage | Complete | Local findings now carry activity/location/week context plus optional co-share group, derived footprint, and input values. Regression fixtures cover locally observable footprints, mix, capacity, allocation, workfront, scenario policy, cross-line Live ECLO evidence, and published local score components. No finding uses an invented organiser tag. |
+| R4.4 organiser submission evidence workflow | Complete | Locally clean succeeded runs create an ephemeral ZIP with the three official CSVs and immutable checksum manifest. Structured manual organiser metadata is downloadable as evidence JSON, never uploaded as files, never committed for hidden instances, and never changes `unverified`/`feasible=null`. |
 | Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
@@ -330,16 +331,15 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** the same truthful run/evidence/export behaviour is implemented for B and C with their approved policies and solver diagnostics.
 
-#### R4.4 — Add organiser-website submission evidence workflow
+#### R4.4 — Organiser-website evidence workflow (complete)
 
 **Dependency:** a locally clean real schedule and the team's five-attempt upload budget.
 
-- Create a submission manifest for each planned organiser upload: scenario, Git commit, input checksums, output checksums, local preflight report, and generated timestamp.
-- Provide a clear manual upload bundle/download without persisting hidden input data.
-- Add a controlled way to attach the organiser website's returned report or screenshot metadata to the run evidence once its stable format is known.
-- Track the limited attempts in repository-safe documentation using only public-instance data; never commit hidden instances or their exports.
+- Create packages only with a full `RAILACCESS_BUILD_COMMIT`; each contains scenario, run/schedule IDs, input/output checksums, local preflight report, and timestamp.
+- Keep ZIPs, evidence metadata, and downloaded JSON inside the live run's temporary workspace only. The playbook contains a public-fixture-only five-attempt template.
+- Record only structured website metadata (attempt, time, reported outcome, reference, digest, note). Do not upload screenshots, store raw reports, automate the website, or change validator truthfulness.
 
-**Done when:** every organiser attempt is reproducible, attributable to one exact export set, and visibly distinguished from local preflight evidence.
+**Complete:** R4.4 packages are reproducible within the live process and visibly separate local preflight from user-recorded organiser metadata. Official report parsing and verified status remain organiser-dependent work.
 
 #### R4.5 — Finish recovery integration
 

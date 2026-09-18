@@ -35,6 +35,7 @@ class InputSource(ApiModel):
     instance_id: str
     received_at: datetime
     fixture: bool = False
+    file_checksums: dict[str, str] = Field(default_factory=dict)
 
 
 class InputInstance(ApiModel):
@@ -326,6 +327,51 @@ class RunProblem(ApiModel):
     message: str
 
 
+class OrganiserReportedOutcome(str, Enum):
+    UNKNOWN = "unknown"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class OrganiserEvidenceInput(ApiModel):
+    """Human-entered website metadata; never parsed as organiser verification."""
+
+    attempt_number: int = Field(ge=1, le=5)
+    submitted_at: datetime
+    reported_outcome: OrganiserReportedOutcome
+    report_reference: str | None = Field(default=None, max_length=500)
+    report_sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class OrganiserEvidence(OrganiserEvidenceInput):
+    recorded_at: datetime
+
+
+class SubmissionManifest(ApiModel):
+    schema_version: Literal["1"] = "1"
+    package_id: str
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    created_at: datetime
+    build_commit: str
+    input_checksums: dict[str, str]
+    output_checksums: dict[str, str]
+    input_row_counts: dict[str, int]
+    local_preflight_report: ValidationReport
+
+
+class SubmissionPackageSummary(ApiModel):
+    package_id: str
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    created_at: datetime
+    build_commit: str
+    organiser_evidence: OrganiserEvidence | None = None
+
+
 class RunView(ApiModel):
     run_id: str
     status: RunStatus
@@ -338,6 +384,7 @@ class RunView(ApiModel):
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
     problem: RunProblem | None = None
+    submission_packages: list[SubmissionPackageSummary] = Field(default_factory=list)
 
 
 class ApiFieldError(ApiModel):

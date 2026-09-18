@@ -49,5 +49,6 @@ export const publicFixtureMockRun: RunView = {
     soft_scores: {},
     detail: {}
   },
-  schedule_diff: { baseline_schedule_id: "mock-public-a-schedule", recovered_schedule_id: "mock-public-a-schedule", placement_changes: [], unchanged_count: 1, moved_count: 0 }
+  schedule_diff: { baseline_schedule_id: "mock-public-a-schedule", recovered_schedule_id: "mock-public-a-schedule", placement_changes: [], unchanged_count: 1, moved_count: 0 },
+  submission_packages: []
 };
