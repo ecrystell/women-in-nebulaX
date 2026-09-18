@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from ..exports.csv_writer import write_submission
+from ..domain.preprocessing import require_prepared
 from ..ingestion.csv_loader import load_instance
 from ..validation.preflight import validate_schedule
 from .cp_sat import ScenarioASolver, SolverError, SolverDependencyError
@@ -39,7 +40,7 @@ def main(argv: list[str] | None = None) -> int:
         solver = ScenarioASolver(time_limit_seconds=args.time_limit)
         result = solver.solve_with_diagnostics(instance)
         paths = write_submission(result.schedule, args.output_dir)
-        report = validate_schedule(instance, result.schedule)
+        report = validate_schedule(require_prepared(instance), result.schedule)
     except (SolverError, SolverDependencyError, UnsupportedScenarioError, ValueError) as error:
         print(json.dumps({"status": "error", "error": str(error)}, indent=2))
         return 2

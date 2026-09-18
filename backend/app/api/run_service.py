@@ -23,17 +23,15 @@ from app.api.schemas import (
     ValidationReport,
 )
 from app.domain.models import Scenario, ScenarioSchedule
+from app.domain.preprocessing import PreparedInstance, prepare_instance
 from app.exports.csv_writer import write_submission
 from app.validation.adapter import OfficialValidatorAdapter
-from app.validation.preflight import validate_schedule
+from app.validation.preflight import preparation_report, validate_schedule
+from app.api.solver_contract import ScenarioUnavailable, SolverInputInvalid, SolverUnavailable
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
-
-
-class SolverUnavailable(RuntimeError):
-    """Raised until Role 3 connects the CP-SAT scheduling authority."""
 
 
 @dataclass
@@ -45,7 +43,7 @@ class SolverOutput:
 class SolverAdapter(Protocol):
     def solve(
         self,
-        input_instance: InputInstance,
+        prepared_instance: PreparedInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ) -> SolverOutput: ...
@@ -54,7 +52,7 @@ class SolverAdapter(Protocol):
 class UnavailableSolver:
     def solve(
         self,
-        input_instance: InputInstance,
+        prepared_instance: PreparedInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ) -> SolverOutput:
@@ -159,11 +157,31 @@ class RunService:
             return
         record.status = RunStatus.RUNNING
         record.updated_at = utc_now()
+        preparation = prepare_instance(record.input_instance.to_bundle())
+        if preparation.prepared is None:
+            record.validation_report = ValidationReport.from_domain(preparation_report(preparation.findings))
+            record.status = RunStatus.FAILED
+            record.problem = RunProblem(
+                code="solver_input_invalid",
+                message="The input failed shared preprocessing validation.",
+            )
+            record.updated_at = utc_now()
+            return
         try:
-            output = self.solver.solve(record.input_instance, record.scenario, record.scenario_change)
+            output = self.solver.solve(preparation.prepared, record.scenario, record.scenario_change)
         except SolverUnavailable as error:
             record.status = RunStatus.BLOCKED
             record.problem = RunProblem(code="solver_unavailable", message=str(error))
+            record.updated_at = utc_now()
+            return
+        except ScenarioUnavailable as error:
+            record.status = RunStatus.BLOCKED
+            record.problem = RunProblem(code="scenario_unavailable", message=str(error))
+            record.updated_at = utc_now()
+            return
+        except SolverInputInvalid as error:
+            record.status = RunStatus.FAILED
+            record.problem = RunProblem(code="solver_input_invalid", message=str(error))
             record.updated_at = utc_now()
             return
         except Exception as error:  # Adapter errors are returned as a safe run failure.
@@ -181,10 +199,33 @@ class RunService:
         )
         record.schedule_diff = output.schedule_diff
         record.validation_report = ValidationReport.from_domain(
-            validate_schedule(record.input_instance.to_bundle(), output.schedule), schedule_id=schedule_id
+            validate_schedule(preparation.prepared, output.schedule), schedule_id=schedule_id
         )
-        record.export_dir = Path(tempfile.mkdtemp(prefix="railaccess-run-"))
-        write_submission(output.schedule, record.export_dir)
+
+        if record.validation_report.hard_violations:
+            record.status = RunStatus.FAILED
+            record.problem = RunProblem(
+                code="preflight_failed",
+                message=(
+                    "The solver returned a candidate with local hard-rule violations. "
+                    "Inspect the validation report; submission exports are unavailable."
+                ),
+            )
+            record.updated_at = utc_now()
+            return
+
+        try:
+            record.export_dir = Path(tempfile.mkdtemp(prefix="railaccess-run-"))
+            write_submission(output.schedule, record.export_dir)
+        except Exception as error:  # pragma: no cover - defensive boundary
+            record.status = RunStatus.FAILED
+            record.problem = RunProblem(
+                code="export_failed",
+                message=f"Could not create the submission CSVs: {error}",
+            )
+            record.export_dir = None
+            record.updated_at = utc_now()
+            return
         record.status = RunStatus.SUCCEEDED
         record.updated_at = utc_now()
 

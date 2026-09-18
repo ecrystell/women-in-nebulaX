@@ -195,8 +195,8 @@ The dashboard makes these outputs downloadable and includes the corresponding va
 ```text
 frontend/                 # React dashboard
 backend/app/
+  domain/                 # canonical models and shared preprocessing/footprints
   ingestion/              # schemas and official CSV adapters
-  network/                # topology, location expansion, Live mirroring
   constraints/            # buffers, mixes, caps, workfronts, ECLO rules
   solver/                 # CP-SAT model, objectives and locked-work recovery
   validation/             # validator adapter and report parser

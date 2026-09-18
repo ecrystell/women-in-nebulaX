@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
-from ..api.schemas import InputInstance, ScenarioChange
+from ..api.schemas import ScenarioChange
+from ..api.solver_contract import ScenarioUnavailable, SolverInputInvalid
 from ..domain.models import Scenario
+from ..domain.preprocessing import PreparedInstance, PreparationError
 from .cp_sat import ScenarioASolver, SolveResult
+from .policy import UnsupportedScenarioError
 
 
 class CpSatSolverAdapter:
@@ -16,13 +19,16 @@ class CpSatSolverAdapter:
 
     def solve(
         self,
-        input_instance: InputInstance,
+        prepared_instance: PreparedInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ):
-        result = self.solver.solve_with_diagnostics(
-            input_instance.to_bundle(), scenario, scenario_change
-        )
+        try:
+            result = self.solver.solve_prepared_with_diagnostics(prepared_instance, scenario, scenario_change)
+        except UnsupportedScenarioError as error:
+            raise ScenarioUnavailable(str(error)) from error
+        except PreparationError as error:
+            raise SolverInputInvalid(str(error)) from error
         self.last_result = result
         # Importing this small API dataclass here avoids coupling the core
         # solver's canonical result to the service's orchestration wrapper.

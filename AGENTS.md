@@ -291,27 +291,18 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Versioned contracts | Complete | `/api/v1` Pydantic request/response models implement `InputInstance`, `Schedule`, `ValidationReport`, `ScenarioChange`, and `ScheduleDiff`. API errors carry a request ID, stable code, message, and field errors. |
 | Eight-file intake | Complete | `POST /api/v1/runs` accepts exactly the eight official filenames, parses the typed CSV records synchronously, and returns actionable package/schema errors. Uploaded inputs exist only in process memory after parsing. |
 | Run lifecycle | Complete shell | In-memory runs support `accepted`, `running`, `succeeded`, `failed`, and `blocked`. With no solver connected, a valid upload becomes `blocked` with `solver_unavailable`; it never receives an invented schedule. |
-| Solver integration seam | Complete shell | `SolverAdapter` accepts `InputInstance`, scenario, and optional confirmed `ScenarioChange`, returning the canonical schedule and optional diff. Person 2 replaces only this adapter implementation. |
-| Export integration | Complete shell | Successful candidates can produce the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory. |
+| Solver integration seam | Complete for Scenario A | `RunService` passes one canonical `PreparedInstance`, scenario, and optional confirmed `ScenarioChange` to `CpSatSolverAdapter`, which returns the canonical schedule. Scenario B/C return `blocked/scenario_unavailable`; they never fall back to A. |
+| Scenario A API run gate | Complete | Scenario A solver input/topology failures return `failed/solver_input_invalid`; unexpected solver errors return `failed/solver_failed`. A candidate is locally preflighted before success. Hard findings retain schedule/report evidence but return `failed/preflight_failed`, create no exports, and download attempts return `409/preflight_not_clean`. |
+| Shared preprocessing handoff | Complete | `app/domain/preprocessing.py` is the sole owner of routes, base/closure footprints, buffers, Live mirroring, H01–H02 crossover, planning calendar, and cross-file checks. Each API run prepares once and shares that representation with CP-SAT and local preflight. |
+| Export integration | Complete for locally clean candidates | Only a zero-hard-violation local candidate produces the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory; a clean result is still `unverified`. |
 | Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
 | Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
-| Regression and container checks | Complete foundation | Pytest covers upload failures, lifecycle states, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds and the preflight command run against the vendored public sample. |
+| Regression and container checks | Complete for Scenario A gate | Pytest covers upload failures, lifecycle states, real Scenario A solving, B/C unavailability, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
 | Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
 
 ### Remaining implementation roadmap
-
-#### R4.1 — Align the shared preprocessing handoff
-
-**Dependency:** Person 1 owns the domain/preprocessing implementation; Person 2 consumes it in CP-SAT.
-
-- Move route expansion, buffer expansion, Live mirroring, and H01/H02 crossover from the current preflight helper into a shared, tested domain module owned by Person 1.
-- Make both Person 2's solver and Person 4's preflight consume those same derived objects. Do not maintain two semantic implementations of topology or closure rules.
-- Agree the derived-object interface: activity footprint, closure footprint, legal possession information, planning-week conversion, predecessor graph, and row/field diagnostic format.
-- Add cross-file and malformed-topology fixtures at the shared preprocessing boundary.
-
-**Done when:** the solver and validator use one tested preprocessing representation and no Person 4 module independently interprets railway topology.
 
 #### R4.2 — Complete deterministic validator coverage
 
@@ -325,18 +316,18 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** every published hard rule has deterministic coverage, a fixture, a stable local tag, and organiser evidence or an explicit documented uncertainty.
 
-#### R4.3 — Connect the real solver and enforce run gates
+#### R4.3 — Extend the run gate beyond Scenario A
 
 **Dependency:** Person 2's `SolverAdapter` implementation and Person 1's preprocessing output.
 
-- Replace `UnavailableSolver` with the real Scenario A adapter first, then extend the same path to B and C.
-- Record CP-SAT status and diagnostics; accept only `FEASIBLE` or `OPTIMAL` candidates from the solver.
-- Run local preflight before marking a run `succeeded`; expose violations and score evidence in the run response.
-- Decide and implement the export policy: locally hard-invalid candidates must be clearly rejected or labelled diagnostic-only, never presented as a ready submission.
+- Integrate Person 2's Scenario B and C policies through the same adapter; unsupported scenarios must remain blocked until then.
+- Record CP-SAT status and diagnostics in the run evidence; accept only `FEASIBLE` or `OPTIMAL` candidates from the solver.
 - Add bounded solver timeout, safe exception handling, temporary-export cleanup, and explicit expired/restarted-run behaviour.
-- Add end-to-end tests: public eight-file upload → preprocessing → solver → preflight → three exports → API response.
+- Keep the existing local-preflight gate: hard-invalid candidates are diagnostic-only, never ready submissions.
 
-**Done when:** a real public-instance Scenario A run travels through one API path and produces a locally clean, unverified export set with reproducible evidence.
+**Scenario A done:** a real public-instance Scenario A run travels through one API path and produces a locally clean, unverified export set with reproducible evidence.
+
+**Done when:** the same truthful run/evidence/export behaviour is implemented for B and C with their approved policies and solver diagnostics.
 
 #### R4.4 — Add organiser-website submission evidence workflow
 
@@ -382,10 +373,23 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
 
+#### R4.8 — Bonus: typed disruption request parser
+
+**Dependency:** R4.5 recovery integration, stable `ScenarioChange` validation, and the grounded-tool safeguards in R4.6.
+
+- Add an LLM-backed, schema-constrained endpoint that translates a controller's hand-typed disruption request into a **draft** `ScenarioChange` (for example, a reduced location supply, a requested lock, or a stated rationale).
+- Show the parsed fields, assumptions, unresolved references, and validation errors to the controller before any action is available.
+- Resolve locations, weeks, activities, and placement keys only against the selected run's deterministic input/schedule evidence; reject ambiguous or unknown references rather than guessing.
+- Require the controller to review and explicitly confirm the resulting `ScenarioChange`; only the existing recovery endpoint may dispatch a solver run.
+- Do not allow the LLM to assign a placement, alter priorities or railway rules, claim feasibility, bypass locked-work checks, or execute a change itself.
+- Add adversarial tests for ambiguous language, invented IDs, conflicting requests, missing confirmation, and attempts to coerce a feasibility claim or direct schedule mutation.
+
+**Done when:** a controller can type a disruption in plain language, receive a transparent draft change for review, and safely pass only an explicitly confirmed, deterministic `ScenarioChange` to recovery.
+
 ### Person 4 sequencing and dependencies
 
-1. **Now:** maintain the API/preflight tests, agree the shared preprocessing interface, and prepare the organiser-evidence manifest format.
-2. **After Person 1/2 Scenario A:** integrate the real solver and enforce the run/export gate.
+1. **Now:** maintain the Scenario A API/preflight tests, agree the shared preprocessing interface, and prepare the organiser-evidence manifest format.
+2. **After Person 1/2 Scenario B/C:** extend the real-solver run/export gate to those scenarios.
 3. **After first organiser evidence:** close validator ambiguities and complete rule fixtures.
 4. **After A/B/C and recovery are stable:** add grounded LLM tools and Cloud Run deployment.
 

@@ -13,8 +13,7 @@ import argparse
 import csv
 import json
 from collections import defaultdict
-from dataclasses import dataclass
-from datetime import date, timedelta
+from datetime import date
 from pathlib import Path
 from typing import Iterable
 
@@ -23,14 +22,12 @@ from pydantic import BaseModel, ValidationError
 from app.domain.models import (
     AccessAssignment,
     ActivityRecord,
-    Bound,
     ContractResult,
-    InstanceBundle,
-    NatureOfWorks,
     OccupancyAssignment,
     Scenario,
     ScenarioSchedule,
 )
+from app.domain.preprocessing import PreparedInstance, PreparationFinding, prepare_instance
 from app.exports.csv_writer import ACCESS_HEADERS, OCCUPANCY_HEADERS, RESULT_HEADERS
 from app.ingestion.csv_loader import load_instance
 from app.validation.adapter import OfficialValidatorAdapter, ValidationReport
@@ -92,58 +89,18 @@ def load_submission(submission_dir: Path) -> ScenarioSchedule:
     )
 
 
-@dataclass(frozen=True)
-class _Route:
-    line_code: str
-    bound: Bound
-    first_sector_seq: int
-    last_sector_seq: int
-
-
 class _Preflight:
-    def __init__(self, instance: InstanceBundle, schedule: ScenarioSchedule) -> None:
-        self.instance = instance
+    def __init__(self, prepared: PreparedInstance, schedule: ScenarioSchedule) -> None:
+        self.prepared = prepared
+        self.instance = prepared.instance
         self.schedule = schedule
         self.violations: list[dict[str, object]] = []
-        self.projects = {project.contract_number: project for project in instance.projects}
-        self.activities = {activity.activity_id: activity for activity in instance.activities}
-        self.supply = {record.location_id: record for record in instance.location_supply}
-        self.sectors_by_line_seq = {
-            (sector.line_code, sector.seq): sector for sector in instance.sectors
-        }
-        self.stations_by_line_seq = {
-            (station.line_code, station.seq): station for station in instance.stations
-        }
-        self.stations_by_line_id = {
-            (station.line_code, station.station_id): station for station in instance.stations
-        }
-        self.sector_seq_by_id = {sector.sector_id: sector.seq for sector in instance.sectors}
-        self.buffer_size = {
-            record.nature_of_works: record.up_to_buffer_sectors
-            for record in instance.buffer_locations
-        }
-        self.horizon_start = self._parameter_date("horizon_start")
-        self.horizon_weeks = self._parameter_int("horizon_weeks")
+        self.projects = prepared.projects
+        self.activities = {item.activity.activity_id: item.activity for item in prepared.activities}
+        self.prepared_activities = prepared.activities_by_id
+        self.supply = prepared.supply
+        self.horizon_weeks = prepared.calendar.horizon_weeks
         self.warnings: list[str] = []
-
-    def _parameter_date(self, key: str) -> date | None:
-        value = next((parameter.value for parameter in self.instance.parameters if parameter.key == key), None)
-        try:
-            return date.fromisoformat(value) if value else None
-        except ValueError:
-            self.add("input", f"Parameter {key!r} is not an ISO date.")
-            return None
-
-    def _parameter_int(self, key: str) -> int | None:
-        value = next((parameter.value for parameter in self.instance.parameters if parameter.key == key), None)
-        try:
-            parsed = int(value) if value else None
-            if parsed is None or parsed <= 0:
-                raise ValueError
-            return parsed
-        except ValueError:
-            self.add("input", f"Parameter {key!r} is not a positive integer.")
-            return None
 
     def add(
         self,
@@ -163,122 +120,17 @@ class _Preflight:
             violation["week"] = week
         self.violations.append(violation)
 
-    def route_for(self, activity: ActivityRecord) -> _Route | None:
-        try:
-            start_sector_id, start_bound = activity.start_location_id.rsplit(":", 1)
-            end_sector_id, end_bound = activity.end_location_id.rsplit(":", 1)
-            start_seq = self.sector_seq_by_id[start_sector_id]
-            end_seq = self.sector_seq_by_id[end_sector_id]
-            start_sector = self.sectors_by_line_seq[(start_sector_id.split(":")[1], start_seq)]
-            end_sector = self.sectors_by_line_seq[(end_sector_id.split(":")[1], end_seq)]
-            bound = Bound(start_bound)
-        except (KeyError, ValueError, IndexError):
-            self.add("input", f"{activity.activity_id} has an unknown or malformed working section.", activity_ids=[activity.activity_id])
-            return None
-        if start_sector.line_code != end_sector.line_code or start_bound != end_bound:
-            self.add("input", f"{activity.activity_id} must use one line and bound.", activity_ids=[activity.activity_id])
-            return None
-        return _Route(start_sector.line_code, bound, min(start_seq, end_seq), max(start_seq, end_seq))
-
-    @staticmethod
-    def _location_id(kind: str, line: str, station_or_sector: str, bound: Bound) -> str:
-        return f"{kind}:{line}:{station_or_sector}:{bound.value}"
-
-    def _locations_for_range(self, line: str, bound: Bound, first: int, last: int) -> set[str]:
-        locations: set[str] = set()
-        line_sectors = [sector for (sector_line, _), sector in self.sectors_by_line_seq.items() if sector_line == line]
-        if not line_sectors:
-            return locations
-        min_seq, max_seq = min(sector.seq for sector in line_sectors), max(sector.seq for sector in line_sectors)
-        first, last = max(first, min_seq), min(last, max_seq)
-        for sector_seq in range(first, last + 1):
-            sector = self.sectors_by_line_seq.get((line, sector_seq))
-            if sector:
-                locations.add(self._location_id("SEC", line, sector.sector_id.rsplit(":", 1)[1], bound))
-        # A sector range from i..j occupies every station from sector i's book-in
-        # through sector j's book-out, including both platform endpoints.
-        first_sector = self.sectors_by_line_seq.get((line, first))
-        last_sector = self.sectors_by_line_seq.get((line, last))
-        if first_sector and last_sector:
-            first_station = self.stations_by_line_id.get((line, first_sector.from_station_id))
-            last_station = self.stations_by_line_id.get((line, last_sector.to_station_id))
-            if first_station and last_station:
-                for station_seq in range(min(first_station.seq, last_station.seq), max(first_station.seq, last_station.seq) + 1):
-                    station = self.stations_by_line_seq.get((line, station_seq))
-                    if station:
-                        locations.add(self._location_id("PLAT", line, station.station_id, bound))
-        return locations
-
     def base_locations(self, activity: ActivityRecord) -> set[str]:
-        route = self.route_for(activity)
-        return self._locations_for_range(route.line_code, route.bound, route.first_sector_seq, route.last_sector_seq) if route else set()
+        return set(self.prepared_activities[activity.activity_id].base_locations)
 
     def closure_locations(self, activity: ActivityRecord) -> set[str]:
-        route = self.route_for(activity)
-        if route is None:
-            return set()
-        extension = self.buffer_size.get(activity_nature := self.projects.get(activity.contract_number).nature_of_activity if self.projects.get(activity.contract_number) else None, 0)
-        locations = self._locations_for_range(
-            route.line_code, route.bound, route.first_sector_seq - extension, route.last_sector_seq + extension
-        )
-        if activity_nature == NatureOfWorks.LIVE:
-            mirrored_bound = Bound.WESTBOUND if route.bound == Bound.EASTBOUND else Bound.EASTBOUND
-            locations |= self._locations_for_range(
-                route.line_code, mirrored_bound, route.first_sector_seq - extension, route.last_sector_seq + extension
-            )
-            # The interchange exception is line-crossing only for Live work.  It
-            # applies to H01/H02 platforms and the H01_H02 tunnel, on both bounds
-            # because Live work has already mirrored onto the opposite bound.
-            for location in list(locations):
-                kind, line, part, bound = location.split(":")
-                if part in {"H01", "H02", "H01_H02"}:
-                    other_line = "BET" if line == "ALP" else "ALP" if line == "BET" else None
-                    if other_line:
-                        other = f"{kind}:{other_line}:{part}:{bound}"
-                        if other in self.supply:
-                            locations.add(other)
-        return locations
+        return set(self.prepared_activities[activity.activity_id].closure_locations)
 
     def week_end(self, week: int) -> date | None:
-        return self.horizon_start + timedelta(days=week * 7 - 1) if self.horizon_start else None
+        return self.prepared.calendar.week_end(week)
 
     def planned_week(self, value: date) -> int | None:
-        return ((value - self.horizon_start).days // 7) + 1 if self.horizon_start else None
-
-    def validate_input_references(self) -> None:
-        if len(self.projects) != len(self.instance.projects):
-            self.add("input", "PROJECT_DETAILS contains duplicate contract_number values.")
-        if len(self.activities) != len(self.instance.activities):
-            self.add("input", "ACTIVITY_DETAILS contains duplicate activity_id values.")
-        for activity in self.instance.activities:
-            project = self.projects.get(activity.contract_number)
-            if project is None:
-                self.add("input", f"{activity.activity_id} references unknown contract {activity.contract_number}.", activity_ids=[activity.activity_id])
-                continue
-            if activity.activity_type != project.activity_type:
-                self.add("input", f"{activity.activity_id} activity_type does not match its contract.", activity_ids=[activity.activity_id])
-            self.route_for(activity)
-            if activity.predecessor_activity_id and activity.predecessor_activity_id not in self.activities:
-                self.add("precedence", f"{activity.activity_id} references unknown predecessor {activity.predecessor_activity_id}.", activity_ids=[activity.activity_id])
-        # Detect predecessor cycles before schedule evaluation, including longer cycles.
-        visiting: set[str] = set()
-        visited: set[str] = set()
-
-        def visit(activity_id: str) -> None:
-            if activity_id in visiting:
-                self.add("precedence", f"Predecessor cycle includes {activity_id}.", activity_ids=[activity_id])
-                return
-            if activity_id in visited:
-                return
-            visiting.add(activity_id)
-            predecessor = self.activities[activity_id].predecessor_activity_id
-            if predecessor in self.activities:
-                visit(predecessor)
-            visiting.remove(activity_id)
-            visited.add(activity_id)
-
-        for activity_id in self.activities:
-            visit(activity_id)
+        return self.prepared.calendar.planned_week(value)
 
     def validate_schedule_shape(self) -> tuple[dict[tuple[str, int], dict[str, str]], dict[str, list[AccessAssignment]]]:
         accesses_by_activity: dict[str, list[AccessAssignment]] = defaultdict(list)
@@ -371,7 +223,7 @@ class _Preflight:
                 self.add("mix", f"Illegal possession mix at {location_id}, week {week}, group {group}: {types}.", activity_ids=members, location_ids=[location_id], week=week)
 
         for (location_id, week), count in possession_count.items():
-            capacity = self.supply.get(location_id).supply_capacity if location_id in self.supply else 0
+            capacity = self.supply.get(location_id, 0)
             allowed = capacity if self.schedule.scenario in {Scenario.A, Scenario.B} else capacity + 1
             if self.schedule.scenario == Scenario.A and count > allowed:
                 self.add("capacity", f"{location_id} has {count} possessions in week {week}; Scenario A capacity is {capacity}.", location_ids=[location_id], week=week)
@@ -469,7 +321,7 @@ class _Preflight:
                 multiplier = {1: 0.3, 2: 0.2, 3: 0.0}[activity.activity_priority]
                 base_weight = {1: 100, 2: 10, 3: 1}[project.contract_priority]
                 priority_weighted_score += base_weight * (1 + multiplier) * activity_overrun
-        excess_total = sum(max(0, count - self.supply[location].supply_capacity) for (location, _), count in possession_count.items() if location in self.supply)
+        excess_total = sum(max(0, count - self.supply[location]) for (location, _), count in possession_count.items() if location in self.supply)
         eclo_total = sum(1 for assignment in self.schedule.access_assignments if assignment.eclo)
         score = (0 if self.schedule.scenario == Scenario.B else priority_weighted_score) + (0 if self.schedule.scenario == Scenario.A else 7 * excess_total + 5 * eclo_total)
         return {
@@ -485,7 +337,6 @@ class _Preflight:
         }
 
     def run(self) -> ValidationReport:
-        self.validate_input_references()
         groups_by_activity_week, accesses_by_activity = self.validate_schedule_shape()
         self.validate_workload_dates_and_precedence(accesses_by_activity)
         possession_count = self.validate_mixes_capacity_and_closures(groups_by_activity_week)
@@ -508,16 +359,50 @@ class _Preflight:
         return report
 
 
-def validate_schedule(instance: InstanceBundle, schedule: ScenarioSchedule) -> ValidationReport:
-    """Validate a typed schedule against a typed input bundle locally."""
+def preparation_report(findings: tuple[PreparationFinding, ...]) -> ValidationReport:
+    """Expose shared preprocessing findings without implying organiser verification."""
 
-    return _Preflight(instance, schedule).run()
+    report = OfficialValidatorAdapter().local_contract_check()
+    report.message = (
+        f"Local preflight could not evaluate a schedule because shared preprocessing found "
+        f"{len(findings)} hard input violation(s). This result is unverified."
+    )
+    report.hard_violations = [
+        {
+            "rule": finding.rule,
+            "severity": "hard",
+            "detail": finding.detail,
+            "source_file": finding.source_file,
+            "row": finding.row,
+            "field": finding.field,
+            "activity_ids": list(finding.activity_ids),
+            "location_ids": list(finding.location_ids),
+            "week": finding.week,
+        }
+        for finding in findings
+    ]
+    report.detail = {
+        "preflight_version": "1",
+        "implemented_rules": ["shared_preprocessing"],
+        "derived_closure_rules": [],
+        "warnings": ["Schedule-derived checks were skipped because the input package is inconsistent."],
+    }
+    return report
+
+
+def validate_schedule(prepared: PreparedInstance, schedule: ScenarioSchedule) -> ValidationReport:
+    """Validate a schedule against the canonical prepared domain representation."""
+
+    return _Preflight(prepared, schedule).run()
 
 
 def validate_submission(instance_dir: Path, submission_dir: Path) -> ValidationReport:
     """Convenience entry point for the local preflight command and CI."""
 
-    return validate_schedule(load_instance(instance_dir), load_submission(submission_dir))
+    preparation = prepare_instance(load_instance(instance_dir))
+    if preparation.prepared is None:
+        return preparation_report(preparation.findings)
+    return validate_schedule(preparation.prepared, load_submission(submission_dir))
 
 
 def main() -> int:

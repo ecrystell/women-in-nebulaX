@@ -20,9 +20,9 @@ from ..domain.models import (
     Scenario,
     ScenarioSchedule,
 )
+from ..domain.preprocessing import PreparedActivity, PreparedInstance, require_prepared
 from .policy import ScenarioPolicy, policy_for
 from .scoring import scenario_a_score
-from .topology import PreparedActivity, PreparedInstance, SolverInputError, prepare_instance
 
 
 class SolverDependencyError(RuntimeError):
@@ -105,12 +105,28 @@ class ScenarioASolver:
             raise SolverError(
                 "Disruption recovery is not implemented in the Scenario A core solver yet."
             )
+        return self.solve_prepared_with_diagnostics(
+            require_prepared(instance), scenario, scenario_change
+        )
+
+    def solve_prepared_with_diagnostics(
+        self,
+        prepared: PreparedInstance,
+        scenario: Scenario = Scenario.A,
+        scenario_change: object | None = None,
+    ) -> SolveResult:
+        """Solve an already validated/prepared instance without recalculation."""
+        if scenario is not Scenario.A:
+            policy_for(scenario)
+        if scenario_change is not None:
+            raise SolverError(
+                "Disruption recovery is not implemented in the Scenario A core solver yet."
+            )
         if cp_model is None:
             raise SolverDependencyError(
                 "OR-Tools is required for the CP-SAT solver; install requirements.txt first."
             )
 
-        prepared = prepare_instance(instance)
         policy = policy_for(scenario)
         artifacts = self._build_model(prepared, policy)
         solver = cp_model.CpSolver()
@@ -130,7 +146,7 @@ class ScenarioASolver:
             )
 
         schedule = self._extract_schedule(artifacts, solver)
-        weighted_score = scenario_a_score(instance, schedule)
+        weighted_score = scenario_a_score(prepared.instance, schedule, calendar=prepared.calendar)
         diagnostics = SolveDiagnostics(
             status=status_name,
             objective_value_scaled=solver.ObjectiveValue(),
@@ -470,7 +486,7 @@ class ScenarioASolver:
         for project in sorted(prepared.projects.values(), key=lambda item: item.contract_number):
             completion = completion_by_contract.get(project.contract_number)
             if completion is None:
-                raise SolverInputError(
+                raise SolverError(
                     f"contract {project.contract_number} has no activities and cannot produce RESULTS.csv."
                 )
             contract_results.append(

@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from app.domain.models import AccessType, NatureOfWorks, Scenario
+from app.domain.preprocessing import require_prepared
 from app.ingestion.csv_loader import load_instance
 from app.validation.adapter import ValidationStatus
 from app.validation.preflight import _Preflight, load_submission, validate_schedule, validate_submission
@@ -41,7 +42,7 @@ def test_preflight_detects_workload_dates_precedence_and_topology_failures() -> 
     workload = schedule_copy()
     workload.access_assignments = [item for item in workload.access_assignments if item.activity_id != "A001"]
     workload.occupancy_assignments = [item for item in workload.occupancy_assignments if item.activity_id != "A001"]
-    assert "workload" in rule_names(validate_schedule(bundle_copy(), workload))
+    assert "workload" in rule_names(validate_schedule(require_prepared(bundle_copy()), workload))
 
     early = schedule_copy()
     assignment = next(item for item in early.access_assignments if item.activity_id == "A001")
@@ -50,7 +51,7 @@ def test_preflight_detects_workload_dates_precedence_and_topology_failures() -> 
     for occupancy in early.occupancy_assignments:
         if occupancy.activity_id == "A001" and occupancy.week == old_week:
             occupancy.week = 1
-    assert "planned_date" in rule_names(validate_schedule(bundle_copy(), early))
+    assert "planned_date" in rule_names(validate_schedule(require_prepared(bundle_copy()), early))
 
     precedence = schedule_copy()
     assignment = next(item for item in precedence.access_assignments if item.activity_id == "A004")
@@ -59,11 +60,11 @@ def test_preflight_detects_workload_dates_precedence_and_topology_failures() -> 
     for occupancy in precedence.occupancy_assignments:
         if occupancy.activity_id == "A004" and occupancy.week == old_week:
             occupancy.week = 16
-    assert "precedence" in rule_names(validate_schedule(bundle_copy(), precedence))
+    assert "precedence" in rule_names(validate_schedule(require_prepared(bundle_copy()), precedence))
 
     topology = schedule_copy()
     topology.occupancy_assignments.pop(0)
-    assert "topology" in rule_names(validate_schedule(bundle_copy(), topology))
+    assert "topology" in rule_names(validate_schedule(require_prepared(bundle_copy()), topology))
 
 
 def test_preflight_detects_possession_mix_capacity_and_scenario_policies() -> None:
@@ -76,23 +77,23 @@ def test_preflight_detects_possession_mix_capacity_and_scenario_policies() -> No
     contract = next(activity.contract_number for activity in bundle_copy().activities if activity.activity_id == activity_id)
     mixed_bundle = bundle_copy()
     next(project for project in mixed_bundle.projects if project.contract_number == contract).access_type = AccessType.PM
-    assert "mix" in rule_names(validate_schedule(mixed_bundle, mixed))
+    assert "mix" in rule_names(validate_schedule(require_prepared(mixed_bundle), mixed))
 
     capacity = schedule_copy()
     capacity_bundle = bundle_copy()
     occupied_location = capacity.occupancy_assignments[0].location_id
     next(supply for supply in capacity_bundle.location_supply if supply.location_id == occupied_location).supply_capacity = 0
-    assert "capacity" in rule_names(validate_schedule(capacity_bundle, capacity))
+    assert "capacity" in rule_names(validate_schedule(require_prepared(capacity_bundle), capacity))
 
     scenario_a = schedule_copy()
     scenario_a.access_assignments[0].eclo = 1
-    assert "eclo" in rule_names(validate_schedule(bundle_copy(), scenario_a))
+    assert "eclo" in rule_names(validate_schedule(require_prepared(bundle_copy()), scenario_a))
 
     scenario_b = schedule_copy()
     scenario_b.scenario = Scenario.B
     for result in scenario_b.contract_results:
         result.scenario = Scenario.B
-    assert "planned_date" in rule_names(validate_schedule(bundle_copy(), scenario_b))
+    assert "planned_date" in rule_names(validate_schedule(require_prepared(bundle_copy()), scenario_b))
 
     scenario_c = schedule_copy()
     scenario_c.scenario = Scenario.C
@@ -101,7 +102,7 @@ def test_preflight_detects_possession_mix_capacity_and_scenario_policies() -> No
     a001 = [item for item in scenario_c.access_assignments if item.activity_id == "A001"]
     a001[0].eclo, a001[0].week = 1, 1
     a001[1].eclo, a001[1].week = 1, 4
-    assert "eclo" in rule_names(validate_schedule(bundle_copy(), scenario_c))
+    assert "eclo" in rule_names(validate_schedule(require_prepared(bundle_copy()), scenario_c))
 
 
 def test_preflight_detects_weekly_allocation_workfront_and_results_failures() -> None:
@@ -115,7 +116,7 @@ def test_preflight_detects_weekly_allocation_workfront_and_results_failures() ->
     c001[0].week, c001[0].access_night = 20, 1
     c001[1].week, c001[1].access_night = 20, 2
     next(project for project in allocation_bundle.projects if project.contract_number == "C001").number_of_maximum_access_per_week = 1
-    assert "weekly_allocation" in rule_names(validate_schedule(allocation_bundle, allocation))
+    assert "weekly_allocation" in rule_names(validate_schedule(require_prepared(allocation_bundle), allocation))
 
     workfront = schedule_copy()
     workfront_bundle = bundle_copy()
@@ -127,17 +128,17 @@ def test_preflight_detects_weekly_allocation_workfront_and_results_failures() ->
     c001[0].week = c001[1].week = 20
     c001[0].access_night = c001[1].access_night = 1
     next(project for project in workfront_bundle.projects if project.contract_number == "C001").number_of_workfronts = 1
-    assert "workfront" in rule_names(validate_schedule(workfront_bundle, workfront))
+    assert "workfront" in rule_names(validate_schedule(require_prepared(workfront_bundle), workfront))
 
     results = schedule_copy()
     results.contract_results[0].overrun_days += 1
-    assert "results" in rule_names(validate_schedule(bundle_copy(), results))
+    assert "results" in rule_names(validate_schedule(require_prepared(bundle_copy()), results))
 
 
 def test_live_closure_footprint_derives_mirror_and_interchange_locations() -> None:
     bundle = bundle_copy()
     schedule = schedule_copy()
-    checker = _Preflight(bundle, schedule)
+    checker = _Preflight(require_prepared(bundle), schedule)
     projects = {project.contract_number: project for project in bundle.projects}
     live_hub_activity = next(
         activity

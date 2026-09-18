@@ -15,11 +15,15 @@ from app.domain.models import (
     Scenario,
     ScenarioSchedule,
 )
+from app.domain.preprocessing import PreparedInstance
 from app.main import app
+from app.solver.adapter import CpSatSolverAdapter
+from app.validation.preflight import load_submission
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DATA = ROOT / "data" / "public-instance"
+SAMPLE_SUBMISSION = PUBLIC_DATA / "sample-submission"
 
 
 def public_files(exclude: str | None = None, replacement: tuple[str, bytes] | None = None) -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -43,17 +47,26 @@ def candidate_schedule(scenario: Scenario) -> ScenarioSchedule:
     )
 
 
-class SuccessfulSolver:
+class CleanSolver:
     def __init__(self) -> None:
         self.changes: list[ScenarioChange | None] = []
+        self.prepared_instances: list[PreparedInstance] = []
 
-    def solve(self, input_instance, scenario, scenario_change=None) -> SolverOutput:
+    def solve(self, prepared_instance, scenario, scenario_change=None) -> SolverOutput:
+        self.prepared_instances.append(prepared_instance)
         self.changes.append(scenario_change)
+        schedule = load_submission(SAMPLE_SUBMISSION)
+        assert schedule.scenario is scenario
+        return SolverOutput(schedule=schedule)
+
+
+class InvalidScheduleSolver:
+    def solve(self, prepared_instance, scenario, scenario_change=None) -> SolverOutput:
         return SolverOutput(schedule=candidate_schedule(scenario))
 
 
 class FailingSolver:
-    def solve(self, input_instance, scenario, scenario_change=None) -> SolverOutput:
+    def solve(self, prepared_instance, scenario, scenario_change=None) -> SolverOutput:
         raise RuntimeError("test solver failure")
 
 
@@ -146,8 +159,9 @@ def test_unknown_and_blocked_exports_return_actionable_errors() -> None:
     assert blocked.json()["error"]["code"] == "export_unavailable"
 
 
-def test_successful_adapter_exports_candidate_but_keeps_it_unverified() -> None:
-    set_run_service(SuccessfulSolver())
+def test_clean_candidate_exports_but_keeps_it_unverified() -> None:
+    solver = CleanSolver()
+    set_run_service(solver)
     client = TestClient(app)
 
     run_id = create_public_run(client)
@@ -158,10 +172,94 @@ def test_successful_adapter_exports_candidate_but_keeps_it_unverified() -> None:
     assert body["schedule"]["scenario"] == "A"
     assert body["validation_report"]["status"] == "unverified"
     assert body["validation_report"]["feasible"] is None
+    assert body["validation_report"]["hard_violations"] == []
+    assert isinstance(solver.prepared_instances[0], PreparedInstance)
 
     export = client.get(f"/api/v1/runs/{run_id}/exports/SCHEDULE_ACCESS.csv")
     assert export.status_code == 200
     assert export.text.startswith("activity_id,access_seq,week,eclo,access_night\n")
+
+
+def test_invalid_candidate_fails_preflight_retains_evidence_and_blocks_exports() -> None:
+    set_run_service(InvalidScheduleSolver())
+    client = TestClient(app)
+
+    run_id = create_public_run(client)
+    result = client.get(f"/api/v1/runs/{run_id}")
+
+    assert result.status_code == 200
+    body = result.json()
+    assert body["status"] == "failed"
+    assert body["problem"]["code"] == "preflight_failed"
+    assert body["schedule"] is not None
+    report = body["validation_report"]
+    assert report["status"] == "unverified"
+    assert report["feasible"] is None
+    assert report["hard_violations"]
+    assert any(item["activity_ids"] for item in report["hard_violations"])
+    assert any(
+        item["location_ids"] and item["week"]
+        for item in report["hard_violations"]
+    )
+
+    export = client.get(f"/api/v1/runs/{run_id}/exports/SCHEDULE_ACCESS.csv")
+    assert export.status_code == 409
+    assert export.json()["error"]["code"] == "preflight_not_clean"
+
+
+@pytest.mark.parametrize("scenario", ["B", "C"])
+def test_unimplemented_scenarios_are_blocked_not_silently_solved_as_a(scenario: str) -> None:
+    set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
+    client = TestClient(app)
+
+    response = client.post("/api/v1/runs", data={"scenario": scenario}, files=public_files())
+    assert response.status_code == 202
+    result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
+
+    assert result.status_code == 200
+    assert result.json()["status"] == "blocked"
+    assert result.json()["problem"]["code"] == "scenario_unavailable"
+
+
+def test_solver_preprocessing_failure_is_reported_without_falling_back() -> None:
+    invalid_activity_csv = (PUBLIC_DATA / "08_ACTIVITY_DETAILS.csv").read_text(encoding="utf-8")
+    invalid_activity_csv = invalid_activity_csv.replace("A001,C001,Renewal", "A001,UNKNOWN,Renewal", 1)
+    set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
+    client = TestClient(app)
+
+    response = client.post(
+        "/api/v1/runs",
+        data={"scenario": "A"},
+        files=public_files(replacement=("08_ACTIVITY_DETAILS.csv", invalid_activity_csv.encode("utf-8"))),
+    )
+    assert response.status_code == 202
+    result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
+
+    assert result.status_code == 200
+    assert result.json()["status"] == "failed"
+    assert result.json()["problem"]["code"] == "solver_input_invalid"
+    finding = result.json()["validation_report"]["hard_violations"][0]
+    assert finding["source_file"] == "08_ACTIVITY_DETAILS.csv"
+    assert finding["row"] == 2
+    assert finding["field"] == "contract_number"
+
+
+def test_real_scenario_a_solver_produces_clean_unverified_exports() -> None:
+    set_run_service(CpSatSolverAdapter(time_limit_seconds=30))
+    client = TestClient(app)
+
+    run_id = create_public_run(client)
+    result = client.get(f"/api/v1/runs/{run_id}")
+
+    assert result.status_code == 200
+    body = result.json()
+    assert body["status"] == "succeeded"
+    assert body["schedule"]["scenario"] == "A"
+    assert body["validation_report"]["status"] == "unverified"
+    assert body["validation_report"]["feasible"] is None
+    assert body["validation_report"]["hard_violations"] == []
+    for filename in ("SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "RESULTS.csv"):
+        assert client.get(f"/api/v1/runs/{run_id}/exports/{filename}").status_code == 200
 
 
 def test_solver_failure_is_a_failed_run() -> None:
@@ -197,7 +295,7 @@ def test_unverified_report_cannot_claim_feasibility() -> None:
 
 
 def test_recovery_requires_confirmation_and_preserves_change_for_adapter() -> None:
-    solver = SuccessfulSolver()
+    solver = CleanSolver()
     set_run_service(solver)
     client = TestClient(app)
     base_run_id = create_public_run(client)

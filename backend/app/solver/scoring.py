@@ -6,7 +6,7 @@ from collections import defaultdict
 from datetime import date
 
 from ..domain.models import InstanceBundle, ScenarioSchedule
-from .topology import PlanningCalendar
+from ..domain.preprocessing import PlanningCalendar, require_prepared
 
 
 CONTRACT_WEIGHT = {1: 100, 2: 10, 3: 1}
@@ -14,14 +14,13 @@ ACTIVITY_PRIORITY_NUDGE = {1: 0.3, 2: 0.2, 3: 0.0}
 
 
 def planning_calendar(instance: InstanceBundle) -> PlanningCalendar:
-    values = {parameter.key: parameter.value for parameter in instance.parameters}
-    return PlanningCalendar(date.fromisoformat(values["horizon_start"]), int(values["horizon_weeks"]))
+    return require_prepared(instance).calendar
 
 
 def activity_completion_dates(
-    instance: InstanceBundle, schedule: ScenarioSchedule
+    instance: InstanceBundle, schedule: ScenarioSchedule, *, calendar: PlanningCalendar | None = None
 ) -> dict[str, date]:
-    calendar = planning_calendar(instance)
+    calendar = calendar or planning_calendar(instance)
     last_week: dict[str, int] = defaultdict(int)
     for assignment in schedule.access_assignments:
         last_week[assignment.activity_id] = max(last_week[assignment.activity_id], assignment.week)
@@ -32,11 +31,11 @@ def activity_completion_dates(
 
 
 def priority_weighted_overrun(
-    instance: InstanceBundle, schedule: ScenarioSchedule
+    instance: InstanceBundle, schedule: ScenarioSchedule, *, calendar: PlanningCalendar | None = None
 ) -> float:
     projects = {project.contract_number: project for project in instance.projects}
     activities = {activity.activity_id: activity for activity in instance.activities}
-    completion = activity_completion_dates(instance, schedule)
+    completion = activity_completion_dates(instance, schedule, calendar=calendar)
     score = 0.0
     for activity_id, completed in completion.items():
         activity = activities[activity_id]
@@ -50,7 +49,9 @@ def priority_weighted_overrun(
     return score
 
 
-def scenario_a_score(instance: InstanceBundle, schedule: ScenarioSchedule) -> float:
+def scenario_a_score(
+    instance: InstanceBundle, schedule: ScenarioSchedule, *, calendar: PlanningCalendar | None = None
+) -> float:
     """Return the published Scenario A score; no ECLO/excess terms exist in A."""
 
-    return priority_weighted_overrun(instance, schedule)
+    return priority_weighted_overrun(instance, schedule, calendar=calendar)

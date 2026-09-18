@@ -4,6 +4,7 @@ from collections import defaultdict
 from pathlib import Path
 
 from app.domain.models import Scenario
+from app.domain.preprocessing import require_prepared
 from app.ingestion.csv_loader import load_instance
 from app.solver.cp_sat import ScenarioASolver
 from app.solver.policy import UnsupportedScenarioError, policy_for
@@ -28,7 +29,7 @@ def test_scenario_a_solves_public_instance_and_preserves_workload() -> None:
     assert all(assignment.eclo == 0 for assignment in schedule.access_assignments)
     assert scenario_a_score(instance, schedule) == result.diagnostics.weighted_score
 
-    report = validate_schedule(instance, schedule)
+    report = validate_schedule(require_prepared(instance), schedule)
     assert report.hard_violations == []
     assert report.status.value == "unverified"
 
