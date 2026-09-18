@@ -633,7 +633,7 @@ export default function App() {
         <div className="mt-3 flex justify-end">
           <button
             onClick={() => setPage((current) => current === "overview" ? "setup" : "overview")}
-            className="rounded-lg border border-red-400 bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-red-950/35 transition hover:bg-red-400"
+            className="rounded-xl border border-red-300 bg-red-600 px-5 py-3 text-base font-bold text-white shadow-lg shadow-red-950/35 transition hover:bg-red-400"
           >
             {page === "overview" ? "Build / update schedule" : "← Tracks overview"}
           </button>
