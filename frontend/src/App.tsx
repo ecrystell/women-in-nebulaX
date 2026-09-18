@@ -107,7 +107,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Tracks overview</h2>
+          <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Tracks overview</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
           <p><span className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400" />ALP · Red line</p>
@@ -176,7 +176,7 @@ function Calendar({
 
   return (
     <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">02 · Maintenance calendar</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
@@ -298,12 +298,12 @@ const publicScheduleFiles = [
 
 function PublicScheduleDownloads() {
   return (
-    <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Public test output</p>
+    <section className="editorial-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
       <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
-          <h2 className="text-xl font-bold text-white">Pre-computed schedule files</h2>
-          <p className="mt-1 text-sm text-slate-400">Download the published output set for the provided dataset.</p>
+          <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Schedule files</h2>
+          <p className="mt-1 text-sm text-slate-400">Download the schedules for the provided dataset.</p>
         </div>
         <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">CSV · Scenario A</span>
       </div>
@@ -622,8 +622,8 @@ export default function App() {
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
             <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03 · Build schedule</p>
-              <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
               <div className="mt-4">
                 <UploadDropzone
@@ -641,8 +641,8 @@ export default function App() {
             </div>
 
             <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Update event</p>
-              <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Update event</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Disruption upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
               <div className="mt-4">
                 <UploadDropzone
@@ -659,7 +659,7 @@ export default function App() {
 
             <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
-              <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {(["A", "B", "C"] as Scenario[]).map((option) => (

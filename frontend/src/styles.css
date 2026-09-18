@@ -42,6 +42,10 @@ body {
   line-height: 1.25;
 }
 
+.editorial-card h2.section-heading {
+  font-size: 1.25rem;
+}
+
 .editorial-card {
   border-color: rgb(71 85 105 / 85%) !important;
   border-radius: 0.85rem;
