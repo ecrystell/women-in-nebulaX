@@ -291,7 +291,7 @@ function RailBed() {
 
 export function TrainScene() {
   return (
-    <Canvas camera={{ position: [0, 3, 8], fov: 48 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
+    <Canvas camera={{ position: [0, 2, 8], fov: 48 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
       <ambientLight intensity={0.42} />
       <directionalLight position={[4, 6, 5]} intensity={2.5} color="#dbeafe" />
       <fog attach="fog" args={["#020617", 14, 55]} />

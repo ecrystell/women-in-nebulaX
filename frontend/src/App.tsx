@@ -104,7 +104,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Dual-line track access topology</h2>
+          <h2 className="mt-1 text-xl font-bold text-white">Tracks overview</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
           <p><span className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400" />ALP · Red line</p>
@@ -451,7 +451,7 @@ export default function App() {
   const [demandFiles, setDemandFiles] = useState<File[]>([]);
   const [updateFiles, setUpdateFiles] = useState<File[]>([]);
   const [scenario, setScenario] = useState<Scenario>("A");
-  const [refreshNotice, setRefreshNotice] = useState("Upload the demand book and select a scenario to prepare an optimisation run.");
+  const [refreshNotice, setRefreshNotice] = useState("Upload a demand book or disruption event, then select a scenario to prepare an optimisation run.");
   const [run, setRun] = useState<RunView | null>(null);
   const [runBusy, setRunBusy] = useState(false);
 
@@ -463,17 +463,20 @@ export default function App() {
 
   const validatorStatus = health?.validator_status ?? "checking";
   const demandBookReady = demandFiles.length === 8;
+  const scheduleInputReady = demandBookReady || updateFiles.length > 0;
   const changeMonth = (direction: number) => {
     setMonth((current) => (current + direction + 12) % 12);
   };
 
   const startRun = async () => {
-    if (!demandBookReady || runBusy) return;
+    if (!scheduleInputReady || runBusy) return;
     setRunBusy(true);
     setRun(null);
-    setRefreshNotice(`Uploading the eight CSVs for Scenario ${scenario}.`);
+    const runFiles = demandBookReady ? demandFiles : updateFiles;
+    const uploadLabel = demandBookReady ? "eight CSV demand book" : "disruption event";
+    setRefreshNotice(`Uploading the ${uploadLabel} for Scenario ${scenario}.`);
     try {
-      let current = await railAccessApi.createRun(scenario, demandFiles);
+      let current = await railAccessApi.createRun(scenario, runFiles);
       setRun(current);
       for (let attempt = 0; attempt < 90 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
@@ -482,6 +485,7 @@ export default function App() {
       }
       setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
       setDemandFiles([]);
+      setUpdateFiles([]);
     } catch (error) {
       const detail = error instanceof RailAccessApiError ? error.message : "The run could not be started.";
       setRefreshNotice(detail);
@@ -532,7 +536,6 @@ export default function App() {
         ))}
       </div>
 
-      <div aria-hidden="true" className="train-viewpoint relative z-10" />
       <section className="relative z-10 mx-auto max-w-7xl pb-20">
         <header className="planner-toolbar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -543,6 +546,8 @@ export default function App() {
             <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">Validator: {validatorStatus}</span>
           </div>
         </header>
+
+        <div aria-hidden="true" className="train-viewpoint" />
 
         <div className="mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
           <TrackDiagram activeStation={activeEvent?.station ?? null} />
@@ -594,7 +599,7 @@ export default function App() {
           </div>
 
           <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05–06 · Optimise</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
             <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
             <div className="mt-4 grid grid-cols-3 gap-2">
@@ -610,7 +615,7 @@ export default function App() {
             </div>
             <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
             <button
-              disabled={!demandBookReady || runBusy}
+              disabled={!scheduleInputReady || runBusy}
               onClick={() => void startRun()}
               className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
