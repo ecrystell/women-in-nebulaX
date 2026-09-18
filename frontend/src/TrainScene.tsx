@@ -233,7 +233,7 @@ function Train() {
     const scrollPosition = Math.min(Math.max(scrollProgress.current, 0), 1);
     // Starts briskly, but never reaches the end before the page scroll does.
     const progress = Math.pow(scrollPosition, 0.7);
-    const targetZ = -36 + progress * 39;
+    const targetZ = -20 + progress * 23;
     const targetX = progress * 4.2;
 
     train.current.position.z = MathUtils.damp(train.current.position.z, targetZ, 4, delta);
@@ -242,7 +242,7 @@ function Train() {
   });
 
   return (
-    <group ref={train} position={[0, -0.24, -36]}>
+    <group ref={train} position={[0, -0.24, -20]}>
       <MRTCar />
       <PassengerCar position={[0, 0, -9.85]} />
       <PassengerCar position={[0, 0, -19.7]} />
@@ -291,7 +291,7 @@ function RailBed() {
 
 export function TrainScene() {
   return (
-    <Canvas camera={{ position: [0, 1, 8], fov: 48 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
+    <Canvas camera={{ position: [0, 3, 8], fov: 48 }} dpr={[1, 1.5]} gl={{ alpha: true, antialias: true }}>
       <ambientLight intensity={0.42} />
       <directionalLight position={[4, 6, 5]} intensity={2.5} color="#dbeafe" />
       <fog attach="fog" args={["#020617", 14, 55]} />

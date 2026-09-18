@@ -14,9 +14,13 @@ body {
 
 .rail-editorial {
   background:
-    radial-gradient(circle at 74% 16%, rgb(185 28 28 / 28%), transparent 25rem),
-    radial-gradient(circle at 18% 82%, rgb(69 10 10 / 24%), transparent 28rem),
+    radial-gradient(circle at 74% 16%, rgb(30 64 175 / 25%), transparent 25rem),
+    radial-gradient(circle at 18% 82%, rgb(15 23 42 / 34%), transparent 28rem),
     linear-gradient(160deg, #020617 0%, #08152d 55%, #020617 100%);
+}
+
+.train-viewpoint {
+  height: clamp(8rem, 18vw, 12rem);
 }
 
 .planner-toolbar {

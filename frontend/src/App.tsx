@@ -523,7 +523,7 @@ export default function App() {
 
   return (
     <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-35">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-60">
         <TrainScene />
       </div>
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
@@ -532,6 +532,7 @@ export default function App() {
         ))}
       </div>
 
+      <div aria-hidden="true" className="train-viewpoint relative z-10" />
       <section className="relative z-10 mx-auto max-w-7xl pb-20">
         <header className="planner-toolbar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
