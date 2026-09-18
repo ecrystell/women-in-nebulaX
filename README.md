@@ -85,7 +85,7 @@ Scenario-specific constraint model
       +----> Custom scoring + schedule-stability objectives
       |
       v
-Hybrid optimiser (constructive heuristic + CP-SAT repair/search)
+CP-SAT schedule model (single scheduling authority)
       |
       v
 Validator gate ---> 3 required CSV exports ---> Planner dashboard
@@ -99,12 +99,12 @@ Validator gate ---> 3 required CSV exports ---> Planner dashboard
 
 The core is deterministic and auditable:
 
-- A **custom constructive heuristic** orders the most constrained / highest-cost work first, seeks legal co-sharing, and creates a feasible schedule rapidly.
-- A **custom constraint evaluator** expands work locations and verifies every rule independently. It also produces reason-coded conflicts such as `buffer`, `capacity`, `closure`, `workfront` and `planned_date`.
-- **OR-Tools CP-SAT** performs targeted repair and improvement when the heuristic leaves congestion or a weak trade-off. Our own domain model, scoring, conflict explanations and stability objective remain the differentiator; CP-SAT is the search engine, not the product logic.
+- **Custom domain intelligence** parses the official data, expands each activity's required locations, applies buffers and `Live` mirroring, constructs legal co-sharing options, calculates exact scenario scores and produces reason-coded explanations.
+- **OR-Tools CP-SAT** is the single scheduling authority. It chooses among legal placements while enforcing all hard rules and the selected Scenario A/B/C objective in one model.
+- For disruption recovery, approved placements are locked and CP-SAT minimises schedule churn alongside the official scenario objective. This remains one consistent optimisation model, rather than a second heuristic with conflicting rules.
 - The **organiser validator** is the final source of truth. A candidate is never presented as feasible until it passes validation.
 
-This hybrid gives the team a credible custom optimisation story while reducing the risk of failing hidden validator cases.
+The custom domain model makes CP-SAT railway-specific; the single solver authority reduces hidden-validator risk and makes the resulting plan easier to trust.
 
 ### AI: where it adds value safely
 
@@ -124,7 +124,7 @@ Every response is grounded in structured solver output. Gemini cannot directly a
 | Web app | React, TypeScript, Vite, Tailwind CSS, shadcn/ui | Upload flow, scenario control, timeline and explanations |
 | Visuals | Custom SVG/Gantt timeline, Recharts | Location occupancy, buffers, capacity and score breakdown |
 | API | Python 3.12, FastAPI, Pydantic, Pandas | CSV ingestion, schemas, solver and export APIs |
-| Optimisation | Custom heuristic + constraint evaluator; OR-Tools CP-SAT | Feasible scheduling, repair and low-penalty search |
+| Optimisation | Custom domain model / rule evaluator; OR-Tools CP-SAT | Single-source feasible scheduling, recovery and low-penalty search |
 | AI | Vertex AI Gemini with structured tool calls | Grounded explanations and what-if interpretation |
 | Hosting | Docker, Cloud Run | Public hosted prototype and stable judging URL |
 | Optional persistence | Firestore / Cloud Storage | Saved scenarios or uploaded instances only if needed |
@@ -172,7 +172,7 @@ backend/app/
   ingestion/              # schemas and official CSV adapters
   network/                # topology, location expansion, Live mirroring
   constraints/            # buffers, mixes, caps, workfronts, ECLO rules
-  solver/                 # heuristic, CP-SAT repair, objectives
+  solver/                 # CP-SAT model, objectives and locked-work recovery
   validation/             # validator adapter and report parser
   exports/                # required submission CSV writers
   ai/                     # Gemini tools grounded in solver results

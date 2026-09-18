@@ -49,7 +49,7 @@ FastAPI service
   ├── CSV schema/import validation
   ├── topology, buffers and closure expansion
   ├── custom rule evaluator and score calculator
-  ├── constructive scheduler + local repair / CP-SAT
+  ├── CP-SAT schedule model and locked-work recovery
   ├── official-validator adapter
   ├── CSV export service
   └── Vertex AI Gemini tool handlers
@@ -62,7 +62,7 @@ Docker → Cloud Run public URL
 | --- | --- |
 | UI | React, TypeScript, Vite, Tailwind, shadcn/ui, custom SVG/Gantt, Recharts |
 | API/data | Python 3.12, FastAPI, Pydantic, Pandas |
-| Optimisation | Custom heuristic and rule engine; OR-Tools CP-SAT for local repair/improvement |
+| Optimisation | Custom domain model and rule evaluator; OR-Tools CP-SAT as the scheduling authority |
 | AI | Vertex AI Gemini with strict function schemas |
 | Hosting | Docker and one Cloud Run service |
 | Tests | Pytest plus public-instance validator regression tests |
@@ -79,22 +79,19 @@ Avoid GPUs, Kubernetes, BigQuery, microservices, vector databases and persistent
 4. Generate legal candidate placements: week, access night, ECLO eligibility and possession bundle/co-share options.
 5. Fail input validation loudly, with row/column-level error messages.
 
-### Constructive solver
+### Single CP-SAT scheduling model
 
-Schedule the least-flexible work first, breaking ties by:
+CP-SAT is the only component that decides a final schedule. The custom domain layer supplies its legal candidate placements, constraints, objective terms and explanations; it does not independently accept or reject a finished timetable.
 
-1. `Live` work / widest closure footprint;
-2. contract priority and deadline slack;
-3. workload still outstanding; and
-4. capacity scarcity at required locations.
+Model the discrete decision to allocate each required access sequence to a week, access night, ECLO state and legal possession/co-sharing arrangement. Encode every hard rule in the model, then optimise the exact published objective for Scenario A, B or C.
 
-Choose candidates by hard-feasibility first, then the exact official scenario penalty, then future-capacity preservation. Bundle compatible `PC`/`C` work only where the formal mix rule permits it.
+Use CP-SAT status correctly: only `FEASIBLE` or `OPTIMAL` candidates may proceed to the organiser validator. A time-limited `UNKNOWN` result is not a schedule.
 
-### Improvement and recovery
+### Recovery with locked work
 
-- Identify high-cost locations/weeks and activities causing delay.
-- Destroy only the affected neighbourhood and repair it with CP-SAT or bounded local search.
-- Include a schedule-stability penalty during disruption re-planning: preserve locked work and minimise changed unaffected assignments.
+- Convert confirmed placements into hard locks.
+- Apply a validated supply or urgent-work change.
+- Re-run the same CP-SAT model with an additional schedule-difference objective to minimise unnecessary movement.
 - Never use soft penalties to hide hard-rule breaches. Invalid candidates are rejected, not merely scored poorly.
 
 ## Build order — optimised for heavy Codex use
@@ -108,19 +105,19 @@ Codex should accelerate scaffolding, boilerplate, tests, parsing, UI components 
 - Define Pydantic models, one canonical in-memory schedule format and CSV-output contracts.
 - Locate and invoke the organiser validator. If it is not actually supplied in the repository, ask a mentor immediately; this is a blocker for trustworthy iteration.
 
-### Phase 1 — vertical feasibility slice (highest priority)
+### Phase 1 — constraint model and validator loop (highest priority)
 
 - Implement import validation, topology expansion and one rule at a time.
 - Create minimal fixtures for each hard-rule failure.
-- Generate correctly shaped exports and run them through the validator.
-- Get a valid public-instance Scenario A schedule before investing in a polished UI.
+- Build a small CP-SAT feasibility model against fixture data; confirm its outputs match the canonical `Schedule` contract.
+- Generate correctly shaped exports and run them through the validator as soon as the organiser tool is available.
 
-### Phase 2 — complete competition solver
+### Phase 2 — primary CP-SAT solver
 
-- Implement exact A scoring and hard rules.
-- Add Scenario B's zero-overrun requirement, excess-capacity and ECLO objective.
-- Add Scenario C's combined score, one-excess-night tolerance and ECLO continuity window.
-- Add constructive scheduling, repair and regression tests for all three scenarios.
+- Implement every hard rule and exact Scenario A objective in one CP-SAT model; get a valid public-instance A result.
+- Add Scenario B's zero-overrun requirement, excess-capacity and ECLO objective to the same model.
+- Add Scenario C's combined score, one-excess-night tolerance and ECLO continuity window to the same model.
+- Add regression tests and validator checks for all three scenarios before adding a second search strategy.
 
 ### Phase 3 — controller experience
 
@@ -128,9 +125,9 @@ Codex should accelerate scaffolding, boilerplate, tests, parsing, UI components 
 - Build a dark, high-contrast two-line network/timeline showing possessions, buffers, co-shares and hotspots.
 - Add an activity drill-down: blocker, alternatives, score effect and affected locations.
 
-### Phase 4 — differentiation and deployment
+### Phase 4 — recovery, AI and deployment
 
-- Implement disruption re-planning with locked work and minimal churn.
+- Implement disruption re-planning by locking confirmed work in CP-SAT and minimising schedule churn.
 - Add grounded Gemini tools only after solver outputs are stable.
 - Deploy the one-container application to Cloud Run and rehearse hidden-instance upload.
 
@@ -220,11 +217,11 @@ This person signs off hard-constraint behaviour. They do not need to write every
 
 | Owns | Deliverables | Must decide before coding proceeds |
 | --- | --- | --- |
-| Baseline solver | Complete public-instance schedule for A, then B and C | Candidate placement/bundling representation and how co-sharing is constructed |
+| Baseline solver | Complete public-instance schedule for A, then B and C | Discrete CP-SAT variables, legal candidate/bundling representation and co-sharing encoding |
 | Objective implementation | Exact scenario score calculator and solver objective | Tie-breakers that preserve future flexibility without altering official score weights |
 | Recovery sandbox | Locked-work semantics, change budget and minimal-churn objective | What counts as a meaningful disruption and how schedule change is measured |
 
-Use a custom constructive solver first, then targeted CP-SAT/local repair. Never alter domain rules to make a solver convenient; send ambiguities back to Role 1.
+Use one CP-SAT model as the scheduling authority. Custom code prepares the domain-specific constraints and interprets outputs; it does not compete with CP-SAT as a separate final scheduler. Never alter domain rules to make the model convenient; send ambiguities back to Role 1.
 
 ### Role 3 — Product, controller workflow and visual-design lead
 
