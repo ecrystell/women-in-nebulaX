@@ -199,31 +199,7 @@ Spend the first 30–45 minutes together and record the answers in `docs/decisio
 
 No one should begin a large implementation until the canonical objects and rule matrix are written down. Schema changes after this point require the relevant owners' agreement.
 
-### Role 1 — Operations, rules and validator lead
-
-**Human decision authority:** Interpret the specification, identify genuine ambiguities, decide which mentor questions are necessary, and protect the product from unsafe or invented assumptions.
-
-| Owns | Deliverables | Must decide before coding proceeds |
-| --- | --- | --- |
-| Rule matrix and data dictionary | `docs/rule-matrix.md`, `docs/data-contract.md`, minimal CSV fixtures | Exact interpretation of buffers, `Live` mirroring, H01–H02 behaviour, legal mixes, access caps, workfronts and ECLO |
-| Validator evidence | Repeatable validator runner and public-instance baseline | What counts as feasible and how each validator tag maps to a UI explanation |
-| Scenario policy | Exact A/B/C score calculations and acceptance tests | No invented costs, capacities or priorities |
-
-This person signs off hard-constraint behaviour. They do not need to write every solver feature, but they should create a failing test before the team claims a rule is implemented.
-
-### Role 2 — Optimisation and recovery lead
-
-**Human decision authority:** Choose the schedule representation, search strategy, candidate ordering and repair neighbourhoods while preserving the operations lead's rule contract.
-
-| Owns | Deliverables | Must decide before coding proceeds |
-| --- | --- | --- |
-| Baseline solver | Complete public-instance schedule for A, then B and C | Discrete CP-SAT variables, legal candidate/bundling representation and co-sharing encoding |
-| Objective implementation | Exact scenario score calculator and solver objective | Tie-breakers that preserve future flexibility without altering official score weights |
-| Recovery sandbox | Locked-work semantics, change budget and minimal-churn objective | What counts as a meaningful disruption and how schedule change is measured |
-
-Use one CP-SAT model as the scheduling authority. Custom code prepares the domain-specific constraints and interprets outputs; it does not compete with CP-SAT as a separate final scheduler. Never alter domain rules to make the model convenient; send ambiguities back to Role 1.
-
-### Role 3 — Product, controller workflow and visual-design lead
+### Role 1 — Frontend engineer and controller-experience owner
 
 **Human decision authority:** Decide what a 2AM works controller must see, understand and approve. Own the interaction design and the Best Aesthetics / Most Popular strategy.
 
@@ -234,37 +210,61 @@ Use one CP-SAT model as the scheduling authority. Custom code prepares the domai
 | Dashboard | Upload, scenario picker, timeline, hotspot/drill-down, comparison and download views | The smallest view that makes a solver result trustworthy rather than overwhelming |
 | Pitch assets | Before/after recovery visual, landing screen, demo/video sequence | The first 20 seconds that make the value obvious to a non-expert voter |
 
-Build against stable mock `Schedule` and `ValidationReport` JSON while the solver is being written. Do not wait for the final solver to create the visual system.
+Build against versioned mock `Schedule`, `ValidationReport` and `ScheduleDiff` JSON while the solver is being written. The frontend consumes the documented API; it does not recreate rail rules in TypeScript.
 
-### Role 4 — Platform, data integration and AI-safety lead
+### Role 2 — Backend domain, rules and validator engineer
 
-**Human decision authority:** Own system boundaries, API contracts, upload/export behaviour, deployment choices, and the safe scope of Gemini interactions.
+**Human decision authority:** Translate the specification into the canonical data contract and deterministic domain logic. Resolve genuine rule ambiguity with mentors and prevent invented assumptions from entering either backend.
 
 | Owns | Deliverables | Must decide before coding proceeds |
 | --- | --- | --- |
-| Application contract | Pydantic schemas, FastAPI routes, frontend API client | Versioned data and error formats shared by UI and solver |
-| Integration | CSV upload, schema errors, output downloads, Docker and Cloud Run | Whether any organiser data persists; default is no persistence |
-| Gemini copilot | Tool schemas and grounded response templates | Permitted tool calls, confirmation point for scenario changes, evidence each answer must cite |
-| End-to-end quality | One-command local run, smoke test and deploy checklist | Timeout/error handling and hidden-instance upload failure behaviour |
+| Input/domain layer | Pydantic models, CSV parser, topology and closure expansion | Exact data semantics for buffers, `Live` mirroring, H01–H02, legal mixes, access caps, workfronts and ECLO |
+| Rule evidence | `docs/rule-matrix.md`, `docs/data-contract.md`, minimal failure fixtures | Official rule → data fields → derived state → validator tag → unit test mapping |
+| Validator/exports | Validator adapter, score parser, required CSV writers | What counts as feasible and how every validator tag maps to API/UI evidence |
 
-Gemini may explain validated output or propose a `ScenarioChange`; it may not set scheduling fields, declare feasibility or execute a change before the user sees and confirms the structured preview. Role 4 and Role 1 jointly approve this guardrail.
+This engineer owns the deterministic domain library, but not CP-SAT variable/search design. Every hard-rule interpretation needs a fixture and should be checked against the organiser validator as soon as it is available.
+
+### Role 3 — Backend optimisation and recovery engineer
+
+**Human decision authority:** Design the discrete CP-SAT formulation and recovery behaviour, using only the canonical inputs and rules supplied by Role 2.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| Primary solver | Public-instance schedules for A, then B and C | CP-SAT variables, legal candidate/bundling representation and co-sharing encoding |
+| Objective layer | Exact A/B/C objective implementation | Model decomposition, time limits and tie-breakers that do not change official weights |
+| Recovery solver | Locked-work and minimal-churn re-optimisation | What counts as a meaningful change and how `ScheduleDiff` is computed |
+
+Use one CP-SAT model as the scheduling authority. Custom code prepares the domain-specific inputs and interprets outputs; it does not compete as a separate final scheduler. Never alter domain rules to make the model convenient; raise ambiguity to Role 2.
+
+### Role 4 — Integration, platform and AI engineer
+
+**Human decision authority:** Own cross-component contracts, the end-to-end run path, Cloud Run deployment and the safe scope of Gemini. This role begins at foundation, continuously integrates small slices, and must not become a final-hours merge-only role.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| Integration contract | FastAPI routes, versioned API schemas, generated/mock frontend client | Request, result, error and async-run formats shared by Roles 1–3 |
+| Run path | Upload orchestration, solver invocation, status, download flow, Docker and Cloud Run | Timeout/error behaviour, no-persistence default and hidden-instance handling |
+| Gemini copilot | Tool schemas and grounded response templates | Permitted tools, confirmation point for scenario changes and evidence each answer must cite |
+| Quality gates | One-command local run, smoke/E2E test and deploy checklist | When a component is integration-ready and when a deployment is demo-safe |
+
+Gemini may explain a validated result or propose a `ScenarioChange`; it may not set scheduling fields, declare feasibility or execute a change before the user sees and confirms the structured preview. Roles 2 and 4 jointly approve this guardrail.
 
 ### Parallelisation plan
 
 | Stage | Role 1 | Role 2 | Role 3 | Role 4 |
 | --- | --- | --- | --- | --- |
-| Foundation | Rule matrix + validator probe | Candidate model sketch | Controller flow + visual grammar | Skeleton, canonical schemas and local run |
-| First vertical slice | Hard-rule fixtures | Scenario A valid schedule | Timeline with fixture data | Upload, export and validator API |
-| Complete solver | A/B/C acceptance tests | B/C + repair implementation | Hotspot and activity drill-down | End-to-end integration tests |
-| Differentiation | Validate disruption rules | Minimal-churn re-plan | Before/after comparison UX | Gemini tools, Docker and Cloud Run |
-| Final demo | Validator sign-off | Score/performance sign-off | Pitch, video and visual polish | Hosted hidden-instance rehearsal |
+| Foundation | Controller flow + visual grammar | Rule matrix, data contract and validator probe | CP-SAT model sketch | Skeleton, API contract, mocks and local run |
+| First vertical slice | Timeline with fixture data | Import, exports and hard-rule fixtures | Scenario A feasible schedule | Upload, solver-run and validator-report API |
+| Complete solver | Hotspot and activity drill-down | A/B/C acceptance tests + validator evidence | B/C objectives and recovery solver | Continuous E2E integration tests |
+| Differentiation | Before/after comparison UX | Validate disruption rules | Minimal-churn re-plan | Gemini tools, Docker and Cloud Run |
+| Final demo | Pitch, video and visual polish | Validator sign-off | Score/performance sign-off | Hosted hidden-instance rehearsal |
 
 ### Integration rules
 
-- Treat the shared schemas as an API. Role 4 owns their implementation; Roles 1 and 2 must approve semantic changes.
-- Every hard-rule implementation needs a test fixture from Role 1 and a validator check before merging.
-- Role 2 may use solver-specific internal structures, but exported schedules must pass through the shared canonical `Schedule` object.
-- Role 3 must display validator facts and score components; never infer validity from a chart alone.
+- Treat the shared schemas as an API. Role 4 owns their integration; Roles 2 and 3 approve semantic changes, and Role 1 receives updated mocks immediately.
+- Every hard-rule implementation needs a test fixture from Role 2 and a validator check before merging.
+- Role 3 may use solver-specific internal structures, but exported schedules must pass through the canonical `Schedule` object.
+- Role 1 must display validator facts and score components; never infer validity from a chart alone.
 - Role 4 must keep Gemini behind tool calls; raw model prose is never a scheduling input or a feasibility result.
 - For a conflict, use this precedence: official specification → organiser validator/mentor clarification → rule matrix → implementation convenience.
 
