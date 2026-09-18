@@ -102,66 +102,22 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
         </div>
       </div>
 
-      <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta directional access topology">
-        <defs>
-          <marker id="alp-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#e45850" />
-          </marker>
-          <marker id="bet-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#63c38a" />
-          </marker>
-        </defs>
-
-        <rect x="650" y="4" width="330" height="48" rx="10" fill="#1e293b" stroke="#334155" />
-        <text x="666" y="25" fill="#cbd5e1" fontSize="13" fontWeight="700">Directional bounds</text>
-        <line x1="790" y1="21" x2="864" y2="21" stroke="#69baf0" strokeWidth="3" markerEnd="url(#alp-arrow)" />
-        <text x="878" y="26" fill="#93c5fd" fontSize="12" fontWeight="700">EB</text>
-        <line x1="864" y1="38" x2="790" y2="38" stroke="#69baf0" strokeWidth="3" markerEnd="url(#alp-arrow)" />
-        <text x="878" y="43" fill="#93c5fd" fontSize="12" fontWeight="700">WB</text>
+      <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
 
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
         <text x="82" y="115" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
-        <line x1="315" y1="105" x2="940" y2="105" stroke="#e45850" strokeWidth="5" markerEnd="url(#alp-arrow)" />
-        <line x1="940" y1="130" x2="315" y2="130" stroke="#e45850" strokeWidth="4" strokeDasharray="7 5" markerEnd="url(#alp-arrow)" />
-        <text x="948" y="109" fill="#fca5a5" fontSize="12" fontWeight="700">EB</text>
-        <text x="280" y="134" fill="#fca5a5" fontSize="12" fontWeight="700">WB</text>
-
         {alphaStations.map((station, index) => stationNode(station, stationPositions[index], 118, "#e45850"))}
-        {["H01", "H02"].map((name, index) => {
-          const x = index === 0 ? 610 : 670;
-          const active = activeStation === name;
-          return (
-            <g key={name}>
-              {active && <rect x={x - 18} y="88" width="36" height="58" rx="7" fill="#fbbf24" opacity="0.25" />}
-              <rect x={x - 12} y="94" width="24" height="44" rx="5" fill={active ? "#fbbf24" : "#b78736"} stroke="#f4c15c" strokeWidth={active ? "3" : "2"} />
-              <text x={x} y="88" textAnchor="middle" fill="#f8d47a" fontSize="14" fontWeight="800">{name}</text>
-            </g>
-          );
-        })}
+        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 118, "#f4c15c"))}
 
         <rect x="10" y="238" width="60" height="28" rx="6" fill="#5fc486" />
         <text x="40" y="257" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
         <text x="82" y="257" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
-        <line x1="315" y1="248" x2="940" y2="248" stroke="#63c38a" strokeWidth="5" markerEnd="url(#bet-arrow)" />
-        <line x1="940" y1="273" x2="315" y2="273" stroke="#63c38a" strokeWidth="4" strokeDasharray="7 5" markerEnd="url(#bet-arrow)" />
-        <text x="948" y="252" fill="#a7f3c0" fontSize="12" fontWeight="700">EB</text>
-        <text x="280" y="277" fill="#a7f3c0" fontSize="12" fontWeight="700">WB</text>
         {betaStations.map((station, index) => stationNode(station, stationPositions[index], 260, "#63c38a"))}
-        {["H01", "H02"].map((name, index) => {
-          const x = index === 0 ? 610 : 670;
-          const active = activeStation === name;
-          return (
-            <g key={name}>
-              {active && <rect x={x - 18} y="226" width="36" height="58" rx="7" fill="#fbbf24" opacity="0.25" />}
-              <rect x={x - 12} y="232" width="24" height="44" rx="5" fill={active ? "#fbbf24" : "#b78736"} stroke="#f4c15c" strokeWidth={active ? "3" : "2"} />
-              <text x={x} y="304" textAnchor="middle" fill="#f8d47a" fontSize="14" fontWeight="800">{name}</text>
-            </g>
-          );
-        })}
+        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 260, "#f4c15c"))}
       </svg>
       <p className="mt-2 text-xs leading-5 text-slate-400">
-        Each line keeps independent EB/WB bounds. H01 and H02 are controlled access points.
+        Hover a maintenance date to highlight its station marker. H01 and H02 are controlled access points.
       </p>
     </section>
   );
@@ -214,19 +170,22 @@ function Calendar({
           if (day < 1) return <span key={index} />;
           const event = eventForDay(day);
           return (
-            <div key={day} className="calendar-day">
-              <span>{day}</span>
-              {event && (
-                <button
-                  aria-label={event.title}
-                  className={`calendar-event ${event.colour}`}
-                  onMouseEnter={() => onEventHover(event)}
-                  onFocus={() => onEventHover(event)}
-                  onMouseLeave={() => onEventHover(null)}
-                  onBlur={() => onEventHover(null)}
-                />
-              )}
-            </div>
+            event ? (
+              <button
+                key={day}
+                aria-label={`${day} ${months[month]}: ${event.title}`}
+                className={`calendar-day calendar-event-day ${event.colour}`}
+                onMouseEnter={() => onEventHover(event)}
+                onFocus={() => onEventHover(event)}
+                onMouseLeave={() => onEventHover(null)}
+                onBlur={() => onEventHover(null)}
+              >
+                <span className="font-bold">{day}</span>
+                <span className="calendar-event-status">Maintenance</span>
+              </button>
+            ) : (
+              <div key={day} className="calendar-day"><span>{day}</span></div>
+            )
           );
         })}
       </div>
@@ -239,7 +198,7 @@ function Calendar({
             <p className="mt-1 text-xs text-slate-400">{activeEvent.people}</p>
           </div>
         ) : (
-          <p className="text-sm text-slate-400">Hover a coloured maintenance marker for location, time and crew details.</p>
+          <p className="text-sm text-slate-400">Hover a scheduled maintenance date for location, time and crew details.</p>
         )}
       </div>
     </section>
