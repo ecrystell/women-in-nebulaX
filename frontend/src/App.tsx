@@ -77,14 +77,29 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
   const alphaStations = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"];
   const betaStations = ["S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18"];
   const stationPositions = [350, 420, 490, 560, 730, 800, 870, 920];
+  const interchangeStations = ["H01", "H02"];
+  const alphaActive = activeStation !== null && (alphaStations.includes(activeStation) || interchangeStations.includes(activeStation));
+  const betaActive = activeStation !== null && (betaStations.includes(activeStation) || interchangeStations.includes(activeStation));
 
   const stationNode = (name: string, x: number, y: number, colour: string) => {
     const active = name === activeStation;
     return (
       <g key={name}>
-        {active && <circle cx={x} cy={y} r="19" fill={colour} opacity="0.18" />}
-        <circle cx={x} cy={y} r={active ? "10" : "8"} fill="#111827" stroke={colour} strokeWidth={active ? "5" : "3"} />
-        <text x={x} y={y - 26} textAnchor="middle" fill={active ? "#f8fafc" : "#e2e8f0"} fontSize="15" fontWeight="700">{name}</text>
+        {active && <circle cx={x} cy={y} r="26" fill={colour} opacity="0.42" />}
+        <circle cx={x} cy={y} r={active ? "13" : "8"} fill={active ? colour : "#111827"} stroke={active ? "#f8fafc" : colour} strokeWidth={active ? "4" : "3"} />
+        <text x={x} y={y - 26} textAnchor="middle" fill={active ? "#ffffff" : "#e2e8f0"} fontSize="15" fontWeight="700">{name}</text>
+      </g>
+    );
+  };
+
+  const interchangeNode = (name: string, x: number, y: number, labelBelow = false) => {
+    const active = name === activeStation;
+    const labelY = labelBelow ? y + 43 : y - 34;
+    return (
+      <g key={`${name}-${y}`}>
+        {active && <rect x={x - 24} y={y - 35} width="48" height="70" rx="24" fill="#fbbf24" opacity="0.35" />}
+        <rect x={x - 14} y={y - 25} width="28" height="50" rx="14" fill={active ? "#fbbf24" : "#f8fafc"} stroke="#111827" strokeWidth={active ? "5" : "4"} />
+        <text x={x} y={labelY} textAnchor="middle" fill={active ? "#fff7cc" : "#fef3c7"} fontSize="13" fontWeight="800">{name}</text>
       </g>
     );
   };
@@ -104,20 +119,35 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
 
       <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
 
+        {["H01", "H02"].map((station, index) => {
+          const x = index === 0 ? 610 : 670;
+          const active = activeStation === station;
+          return (
+            <g key={station}>
+              {active && <line x1={x} y1="143" x2={x} y2="235" stroke="#fbbf24" strokeWidth="17" strokeLinecap="round" opacity="0.28" />}
+              <line x1={x} y1="143" x2={x} y2="235" stroke={active ? "#fbbf24" : "#f8fafc"} strokeWidth={active ? "7" : "5"} strokeLinecap="round" opacity="0.9" />
+            </g>
+          );
+        })}
+
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
         <text x="82" y="115" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
+        {alphaActive && <line x1="330" y1="118" x2="940" y2="118" stroke="#fb7185" strokeWidth="16" strokeLinecap="round" opacity="0.22" />}
+        <line x1="330" y1="118" x2="940" y2="118" stroke={alphaActive ? "#fb7185" : "#e45850"} strokeWidth={alphaActive ? "7" : "5"} strokeLinecap="round" opacity={alphaActive ? "1" : "0.8"} />
         {alphaStations.map((station, index) => stationNode(station, stationPositions[index], 118, "#e45850"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 118, "#f4c15c"))}
+        {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 118))}
 
         <rect x="10" y="238" width="60" height="28" rx="6" fill="#5fc486" />
         <text x="40" y="257" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
         <text x="82" y="257" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
+        {betaActive && <line x1="330" y1="260" x2="940" y2="260" stroke="#6ee7a0" strokeWidth="16" strokeLinecap="round" opacity="0.22" />}
+        <line x1="330" y1="260" x2="940" y2="260" stroke={betaActive ? "#6ee7a0" : "#63c38a"} strokeWidth={betaActive ? "7" : "5"} strokeLinecap="round" opacity={betaActive ? "1" : "0.8"} />
         {betaStations.map((station, index) => stationNode(station, stationPositions[index], 260, "#63c38a"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 260, "#f4c15c"))}
+        {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 260, true))}
       </svg>
       <p className="mt-2 text-xs leading-5 text-slate-400">
-        Hover a maintenance date to highlight its station marker. H01 and H02 are controlled access points.
+        Hover a maintenance date to fill and brighten its station. H01 and H02 are interchanges between both lines.
       </p>
     </section>
   );
@@ -174,14 +204,14 @@ function Calendar({
               <button
                 key={day}
                 aria-label={`${day} ${months[month]}: ${event.title}`}
-                className={`calendar-day calendar-event-day ${event.colour}`}
+                className="calendar-day calendar-event-date"
                 onMouseEnter={() => onEventHover(event)}
                 onFocus={() => onEventHover(event)}
                 onMouseLeave={() => onEventHover(null)}
                 onBlur={() => onEventHover(null)}
               >
                 <span className="font-bold">{day}</span>
-                <span className="calendar-event-status">Maintenance</span>
+                <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
               </button>
             ) : (
               <div key={day} className="calendar-day"><span>{day}</span></div>
