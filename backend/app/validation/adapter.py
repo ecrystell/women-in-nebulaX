@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from enum import Enum
+from typing import Any
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class ValidationStatus(str, Enum):
@@ -19,8 +20,9 @@ class ValidationReport(BaseModel):
     status: ValidationStatus
     feasible: bool | None = None
     message: str
-    hard_violations: list[dict[str, object]] = []
-    soft_scores: dict[str, object] = {}
+    hard_violations: list[dict[str, object]] = Field(default_factory=list)
+    soft_scores: dict[str, object] = Field(default_factory=dict)
+    detail: dict[str, Any] = Field(default_factory=dict)
 
 
 class OfficialValidatorAdapter:
