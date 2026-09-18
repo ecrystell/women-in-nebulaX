@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.ai.gemini import CopilotService
+from app.ai.evidence import _location_label
 from app.api.run_service import RunService, SolverOutput, utc_now
 from app.domain.models import Scenario
 from app.main import app
@@ -87,11 +88,15 @@ def test_evidence_routes_are_deterministic_and_minimised() -> None:
     assert body["payload"]["activity_id"] == "A001"
     assert body["payload"]["placements"]
     assert body["payload"]["closure_footprint"]
+    assert body["payload"]["closure_footprint_labels"]
+    assert body["payload"]["placement_summaries"]
+    assert _location_label("PLAT:BET:H01:WB") == "Platform on Line Beta, at interchange H01, westbound"
 
     hotspots = client.get(f"/api/v1/runs/{run_id}/evidence/capacity-hotspots")
     assert hotspots.status_code == 200
     entries = hotspots.json()["payload"]["hotspots"]
     assert len(entries) <= 10
+    assert all(entry["location_label"] for entry in entries)
     assert entries == sorted(entries, key=lambda item: (-item["excess_access_nights"], -item["utilisation"], item["location_id"], item["week"]))
 
     handover = client.get(f"/api/v1/runs/{run_id}/evidence/handover")

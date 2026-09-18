@@ -1,36 +1,64 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { railAccessApi, RailAccessApiError } from "./api/client";
 import type { CopilotMode, CopilotResponse, RunView } from "./api/types";
+
+type CopilotAnswers = {
+  activity_explanation: Record<string, CopilotResponse>;
+  capacity_hotspots?: CopilotResponse;
+  handover_summary?: CopilotResponse;
+};
 
 /** A deliberately action-only UI: no free-text schedule or disruption requests. */
 export function GroundedCopilot({ run }: { run: RunView | null }) {
   const [open, setOpen] = useState(false);
   const [activityId, setActivityId] = useState("");
   const [mode, setMode] = useState<CopilotMode>("activity_explanation");
-  const [answer, setAnswer] = useState<CopilotResponse | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [answers, setAnswers] = useState<CopilotAnswers>({ activity_explanation: {} });
+  const [requestingMode, setRequestingMode] = useState<CopilotMode | null>(null);
   const [notice, setNotice] = useState("");
   const activityIds = Array.from(new Set(run?.schedule?.placements.map((placement) => placement.activity_id) ?? [])).sort();
+  const busy = requestingMode !== null;
+  const answer = mode === "activity_explanation"
+    ? answers.activity_explanation[activityId]
+    : answers[mode];
+
+  // Answers are tied to a single generated schedule, never the previous run.
+  useEffect(() => {
+    setAnswers({ activity_explanation: {} });
+    setActivityId("");
+    setNotice("");
+  }, [run?.schedule?.schedule_id]);
 
   const ask = async () => {
     if (!run?.schedule || busy) return;
-    if (mode === "activity_explanation" && !activityId) {
+    const requestedMode = mode;
+    const requestedActivityId = activityId;
+    if (requestedMode === "activity_explanation" && !requestedActivityId) {
       setNotice("Select a scheduled activity first.");
       return;
     }
-    setBusy(true);
+    setRequestingMode(requestedMode);
     setNotice("");
     try {
-      setAnswer(await railAccessApi.createCopilotResponse(
+      const response = await railAccessApi.createCopilotResponse(
         run.run_id,
-        mode,
-        mode === "activity_explanation" ? activityId : undefined
-      ));
+        requestedMode,
+        requestedMode === "activity_explanation" ? requestedActivityId : undefined
+      );
+      setAnswers((current) => requestedMode === "activity_explanation"
+        ? {
+            ...current,
+            activity_explanation: {
+              ...current.activity_explanation,
+              [requestedActivityId]: response
+            }
+          }
+        : { ...current, [requestedMode]: response });
     } catch (error) {
       setNotice(error instanceof RailAccessApiError ? error.message : "The grounded copilot is unavailable.");
     } finally {
-      setBusy(false);
+      setRequestingMode(null);
     }
   };
 
@@ -80,11 +108,20 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
                   </label>
                 )}
                 <button disabled={busy || (mode === "activity_explanation" && !activityId)} onClick={() => void ask()} className="w-full rounded-xl bg-red-500 px-3 py-2.5 text-sm font-bold text-white shadow-lg shadow-red-950/35 transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400">
-                  {busy ? "Preparing grounded response…" : mode === "activity_explanation" ? "Explain activity" : mode === "capacity_hotspots" ? "Show capacity hotspots" : "Create handover brief"}
+                  {requestingMode === mode ? "Preparing grounded response…" : mode === "activity_explanation" ? "Explain activity" : mode === "capacity_hotspots" ? "Show capacity hotspots" : "Create handover brief"}
                 </button>
               </div>
             )}
             {notice && <p role="alert" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100">{notice}</p>}
+            {!answer && run?.schedule && !notice && (
+              <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/45 px-4 py-5 text-center text-sm leading-6 text-slate-400">
+                {mode === "activity_explanation"
+                  ? "Choose an activity, then ask for a plain-language explanation."
+                  : mode === "capacity_hotspots"
+                    ? "This view is ready for a fresh capacity-pressure brief."
+                    : "This view is ready for a fresh shift-handover brief."}
+              </div>
+            )}
             {answer && (
               <article className="mt-4 overflow-hidden rounded-xl border border-slate-700 bg-slate-900/85">
                 <div className="flex items-center justify-between border-b border-slate-800 px-3 py-2 text-[11px] font-bold uppercase tracking-[0.12em] text-red-200"><span>{answer.mode.replaceAll("_", " ")}</span><span>Grounded</span></div>

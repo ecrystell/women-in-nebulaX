@@ -116,6 +116,7 @@ export type EvidenceValidation = {
 
 export type CapacityHotspot = {
   location_id: string;
+  location_label: string;
   week: number;
   possession_group_count: number;
   supply_capacity: number;
@@ -134,7 +135,7 @@ export type EvidenceEnvelope = {
   generated_at: string;
   validation: EvidenceValidation;
   payload:
-    | { kind: "activity"; activity_id: string; contract_number: string; activity_type: string; access_type: string; nature_of_activity: string; total_accesses_required: number; planned_start_week: number; predecessor_activity_id?: string; placements: Placement[]; closure_footprint: string[]; contract_result?: ContractResult; local_findings: ValidationReport["hard_violations"] }
+    | { kind: "activity"; activity_id: string; contract_number: string; activity_type: string; access_type: string; nature_of_activity: string; total_accesses_required: number; planned_start_week: number; predecessor_activity_id?: string; placements: Placement[]; closure_footprint: string[]; closure_footprint_labels: string[]; placement_summaries: string[]; contract_result?: ContractResult; local_findings: ValidationReport["hard_violations"] }
     | { kind: "capacity_hotspots"; hotspots: CapacityHotspot[] }
     | { kind: "handover"; placement_count: number; scheduled_activity_count: number; contract_results: ContractResult[]; local_score_components: Record<string, unknown>; top_hotspots: CapacityHotspot[] };
 };

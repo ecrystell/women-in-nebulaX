@@ -38,6 +38,38 @@ def _validation(report: ValidationReport) -> EvidenceValidation:
     )
 
 
+def _location_label(location_id: str) -> str:
+    """Translate compact CSV location IDs into controller-facing language."""
+
+    parts = location_id.split(":")
+    if len(parts) != 4:
+        return location_id
+    kind_code, line_code, place_code, bound_code = parts
+    kind = {"PLAT": "Platform", "SEC": "Tunnel sector"}.get(kind_code, kind_code)
+    line = {"ALP": "Line Alpha", "BET": "Line Beta"}.get(line_code, f"Line {line_code}")
+    bound = {"EB": "eastbound", "WB": "westbound"}.get(bound_code, bound_code)
+    if "_" in place_code:
+        start, end = place_code.split("_", maxsplit=1)
+        place = f"between {start} and {end}"
+    elif place_code.startswith("H"):
+        place = f"at interchange {place_code}"
+    else:
+        place = f"at station {place_code}"
+    return f"{kind} on {line}, {place}, {bound}"
+
+
+def _placement_summary(placement: Placement) -> str:
+    """Make selected-activity placement evidence readable for a controller."""
+
+    eclo = "with early closure / late opening" if placement.eclo else "without early closure / late opening"
+    locations = "; ".join(_location_label(value.location_id) for value in placement.occupancies)
+    groups = ", ".join(sorted({value.co_share_group for value in placement.occupancies}))
+    return (
+        f"Week {placement.week}, access night {placement.access_night}, {eclo}, "
+        f"possession group {groups}: {locations}"
+    )
+
+
 def capacity_hotspots(
     prepared: PreparedInstance,
     schedule_placements: list[Placement],
@@ -63,6 +95,7 @@ def capacity_hotspots(
         items.append(
             CapacityHotspot(
                 location_id=location_id,
+                location_label=_location_label(location_id),
                 week=week,
                 possession_group_count=count,
                 supply_capacity=supply,
@@ -135,6 +168,8 @@ def activity_evidence(
             predecessor_activity_id=item.activity.predecessor_activity_id,
             placements=placements,
             closure_footprint=sorted(item.closure_locations),
+            closure_footprint_labels=[_location_label(location_id) for location_id in sorted(item.closure_locations)],
+            placement_summaries=[_placement_summary(placement) for placement in placements],
             contract_result=result,
             local_findings=findings,
         ),

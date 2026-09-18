@@ -349,12 +349,15 @@ class ActivityEvidence(ApiModel):
     predecessor_activity_id: str | None = None
     placements: list[Placement]
     closure_footprint: list[str]
+    closure_footprint_labels: list[str]
+    placement_summaries: list[str]
     contract_result: ContractResult | None = None
     local_findings: list[Violation] = Field(default_factory=list)
 
 
 class CapacityHotspot(ApiModel):
     location_id: str
+    location_label: str
     week: int = Field(gt=0)
     possession_group_count: int = Field(ge=0)
     supply_capacity: int = Field(ge=0)
