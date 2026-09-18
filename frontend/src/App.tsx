@@ -82,9 +82,22 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
     const active = name === activeStation;
     return (
       <g key={name}>
-        {active && <circle cx={x} cy={y} r="19" fill={colour} opacity="0.18" />}
-        <circle cx={x} cy={y} r={active ? "10" : "8"} fill="#111827" stroke={colour} strokeWidth={active ? "5" : "3"} />
-        <text x={x} y={y - 26} textAnchor="middle" fill={active ? "#f8fafc" : "#e2e8f0"} fontSize="15" fontWeight="700">{name}</text>
+        {active && <circle cx={x} cy={y} r="26" fill={colour} opacity="0.42" />}
+        <circle cx={x} cy={y} r={active ? "13" : "8"} fill={active ? colour : "#111827"} stroke={active ? "#f8fafc" : colour} strokeWidth={active ? "4" : "3"} />
+        <text x={x} y={y - 26} textAnchor="middle" fill={active ? "#ffffff" : "#e2e8f0"} fontSize="15" fontWeight="700">{name}</text>
+      </g>
+    );
+  };
+
+  const interchangeNode = (name: string, x: number, y: number, labelBelow = false) => {
+    const active = name === activeStation;
+    const labelY = labelBelow ? y + 43 : y - 34;
+    return (
+      <g key={`${name}-${y}`}>
+        {active && <rect x={x - 24} y={y - 35} width="48" height="70" rx="24" fill="#fbbf24" opacity="0.35" />}
+        <rect x={x - 14} y={y - 25} width="28" height="50" rx="14" fill={active ? "#fbbf24" : "#f8fafc"} stroke="#111827" strokeWidth={active ? "5" : "4"} />
+        <text x={x} y={labelY} textAnchor="middle" fill={active ? "#fff7cc" : "#fef3c7"} fontSize="13" fontWeight="800">{name}</text>
+        <text x={x} y={labelBelow ? labelY + 11 : labelY - 11} textAnchor="middle" fill="#fcd34d" fontSize="7" fontWeight="800" letterSpacing="0.7">INTERCHANGE</text>
       </g>
     );
   };
@@ -107,17 +120,19 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
         <text x="82" y="115" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
+        <line x1="330" y1="118" x2="940" y2="118" stroke="#e45850" strokeWidth="5" strokeLinecap="round" opacity="0.8" />
         {alphaStations.map((station, index) => stationNode(station, stationPositions[index], 118, "#e45850"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 118, "#f4c15c"))}
+        {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 118))}
 
         <rect x="10" y="238" width="60" height="28" rx="6" fill="#5fc486" />
         <text x="40" y="257" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
         <text x="82" y="257" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
+        <line x1="330" y1="260" x2="940" y2="260" stroke="#63c38a" strokeWidth="5" strokeLinecap="round" opacity="0.8" />
         {betaStations.map((station, index) => stationNode(station, stationPositions[index], 260, "#63c38a"))}
-        {["H01", "H02"].map((station, index) => stationNode(station, index === 0 ? 610 : 670, 260, "#f4c15c"))}
+        {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 260, true))}
       </svg>
       <p className="mt-2 text-xs leading-5 text-slate-400">
-        Hover a maintenance date to highlight its station marker. H01 and H02 are controlled access points.
+        Hover a maintenance date to fill and brighten its station. H01 and H02 are interchanges between both lines.
       </p>
     </section>
   );
