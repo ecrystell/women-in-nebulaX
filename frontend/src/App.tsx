@@ -119,9 +119,16 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
 
       <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
 
-        {[610, 670].map((x) => (
-          <line key={x} x1={x} y1="143" x2={x} y2="235" stroke="#f8fafc" strokeWidth="5" strokeLinecap="round" opacity="0.9" />
-        ))}
+        {["H01", "H02"].map((station, index) => {
+          const x = index === 0 ? 610 : 670;
+          const active = activeStation === station;
+          return (
+            <g key={station}>
+              {active && <line x1={x} y1="143" x2={x} y2="235" stroke="#fbbf24" strokeWidth="17" strokeLinecap="round" opacity="0.28" />}
+              <line x1={x} y1="143" x2={x} y2="235" stroke={active ? "#fbbf24" : "#f8fafc"} strokeWidth={active ? "7" : "5"} strokeLinecap="round" opacity="0.9" />
+            </g>
+          );
+        })}
 
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
@@ -197,13 +204,14 @@ function Calendar({
               <button
                 key={day}
                 aria-label={`${day} ${months[month]}: ${event.title}`}
-                className={`calendar-day calendar-event-day ${event.colour}`}
+                className="calendar-day calendar-event-date"
                 onMouseEnter={() => onEventHover(event)}
                 onFocus={() => onEventHover(event)}
                 onMouseLeave={() => onEventHover(null)}
                 onBlur={() => onEventHover(null)}
               >
                 <span className="font-bold">{day}</span>
+                <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
               </button>
             ) : (
               <div key={day} className="calendar-day"><span>{day}</span></div>

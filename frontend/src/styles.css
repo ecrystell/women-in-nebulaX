@@ -55,23 +55,33 @@ body {
   color: rgb(203 213 225);
 }
 
-.calendar-event-day {
+.calendar-event-date {
   width: 100%;
-  min-height: 3.1rem;
+  border: 0;
+  background: transparent;
   cursor: pointer;
-  border: 1px solid rgb(255 255 255 / 34%);
-  color: rgb(15 23 42);
-  box-shadow: 0 0 1rem rgb(103 232 249 / 30%);
-  transition: transform 160ms ease, filter 160ms ease, box-shadow 160ms ease;
+  font: inherit;
+  color: rgb(203 213 225);
 }
 
-.calendar-event-day:hover,
-.calendar-event-day:focus-visible {
-  filter: brightness(1.13);
+.calendar-event {
+  display: block;
+  height: 0.3rem;
+  width: 1.45rem;
+  border-radius: 9999px;
+  box-shadow: 0 0 0.65rem rgb(103 232 249 / 45%);
+  transition: transform 160ms ease, filter 160ms ease;
+}
+
+.calendar-event-date:hover .calendar-event,
+.calendar-event-date:focus-visible .calendar-event {
+  filter: brightness(1.2);
+  transform: scaleX(1.15);
+}
+
+.calendar-event-date:focus-visible {
   outline: 2px solid rgb(224 242 254);
   outline-offset: 2px;
-  transform: translateY(-1px) scale(1.03);
-  box-shadow: 0 0 1.25rem rgb(103 232 249 / 52%);
 }
 
 @keyframes twinkle {
