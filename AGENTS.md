@@ -186,6 +186,101 @@ Use a memorable project name, a clean landing screen, a short visual video and a
 6. Compare original and recovered plans: changes, delay, ECLO, capacity and score.
 7. Ask the copilot for a handover summary and download the validated CSV set.
 
+## Team-of-four task allocation and decision ownership
+
+Split the team by the decisions that require human judgement, not merely by folders or programming language. Codex can rapidly implement an agreed contract; it cannot safely resolve an ambiguous rail operating rule, choose a user-facing trade-off, or decide what should be trusted in a live controller workflow.
+
+### First team decision session — before parallel implementation
+
+Spend the first 30–45 minutes together and record the answers in `docs/decision-log.md`:
+
+1. Confirm the exact validator command, its availability and the public-instance baseline result.
+2. Agree the canonical objects: `InputInstance`, `Placement`, `Schedule`, `ValidationReport`, `ScenarioChange` and `ScheduleDiff`.
+3. Build a rule matrix: official rule → input columns → derived state → validator tag → unit-test fixture → owning person.
+4. Agree the MVP boundary: validated A/B/C schedule, upload/export, timeline, recovery sandbox and grounded explanations. Everything else is optional.
+5. Confirm the submission repository requirement with the organisers (the published documents currently conflict on GitHub versus GitLab).
+
+No one should begin a large implementation until the canonical objects and rule matrix are written down. Schema changes after this point require the relevant owners' agreement.
+
+### Role 1 — Operations, rules and validator lead
+
+**Human decision authority:** Interpret the specification, identify genuine ambiguities, decide which mentor questions are necessary, and protect the product from unsafe or invented assumptions.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| Rule matrix and data dictionary | `docs/rule-matrix.md`, `docs/data-contract.md`, minimal CSV fixtures | Exact interpretation of buffers, `Live` mirroring, H01–H02 behaviour, legal mixes, access caps, workfronts and ECLO |
+| Validator evidence | Repeatable validator runner and public-instance baseline | What counts as feasible and how each validator tag maps to a UI explanation |
+| Scenario policy | Exact A/B/C score calculations and acceptance tests | No invented costs, capacities or priorities |
+
+This person signs off hard-constraint behaviour. They do not need to write every solver feature, but they should create a failing test before the team claims a rule is implemented.
+
+### Role 2 — Optimisation and recovery lead
+
+**Human decision authority:** Choose the schedule representation, search strategy, candidate ordering and repair neighbourhoods while preserving the operations lead's rule contract.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| Baseline solver | Complete public-instance schedule for A, then B and C | Candidate placement/bundling representation and how co-sharing is constructed |
+| Objective implementation | Exact scenario score calculator and solver objective | Tie-breakers that preserve future flexibility without altering official score weights |
+| Recovery sandbox | Locked-work semantics, change budget and minimal-churn objective | What counts as a meaningful disruption and how schedule change is measured |
+
+Use a custom constructive solver first, then targeted CP-SAT/local repair. Never alter domain rules to make a solver convenient; send ambiguities back to Role 1.
+
+### Role 3 — Product, controller workflow and visual-design lead
+
+**Human decision authority:** Decide what a 2AM works controller must see, understand and approve. Own the interaction design and the Best Aesthetics / Most Popular strategy.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| User journey | One-page controller workflow and demo storyboard | What the controller can change, lock, inspect and approve |
+| UI system | Design tokens, visual grammar, reusable components | Colour/label treatment for `Live`, buffer, PM/PC/C, ECLO, delay, hotspot and validation state |
+| Dashboard | Upload, scenario picker, timeline, hotspot/drill-down, comparison and download views | The smallest view that makes a solver result trustworthy rather than overwhelming |
+| Pitch assets | Before/after recovery visual, landing screen, demo/video sequence | The first 20 seconds that make the value obvious to a non-expert voter |
+
+Build against stable mock `Schedule` and `ValidationReport` JSON while the solver is being written. Do not wait for the final solver to create the visual system.
+
+### Role 4 — Platform, data integration and AI-safety lead
+
+**Human decision authority:** Own system boundaries, API contracts, upload/export behaviour, deployment choices, and the safe scope of Gemini interactions.
+
+| Owns | Deliverables | Must decide before coding proceeds |
+| --- | --- | --- |
+| Application contract | Pydantic schemas, FastAPI routes, frontend API client | Versioned data and error formats shared by UI and solver |
+| Integration | CSV upload, schema errors, output downloads, Docker and Cloud Run | Whether any organiser data persists; default is no persistence |
+| Gemini copilot | Tool schemas and grounded response templates | Permitted tool calls, confirmation point for scenario changes, evidence each answer must cite |
+| End-to-end quality | One-command local run, smoke test and deploy checklist | Timeout/error handling and hidden-instance upload failure behaviour |
+
+Gemini may explain validated output or propose a `ScenarioChange`; it may not set scheduling fields, declare feasibility or execute a change before the user sees and confirms the structured preview. Role 4 and Role 1 jointly approve this guardrail.
+
+### Parallelisation plan
+
+| Stage | Role 1 | Role 2 | Role 3 | Role 4 |
+| --- | --- | --- | --- | --- |
+| Foundation | Rule matrix + validator probe | Candidate model sketch | Controller flow + visual grammar | Skeleton, canonical schemas and local run |
+| First vertical slice | Hard-rule fixtures | Scenario A valid schedule | Timeline with fixture data | Upload, export and validator API |
+| Complete solver | A/B/C acceptance tests | B/C + repair implementation | Hotspot and activity drill-down | End-to-end integration tests |
+| Differentiation | Validate disruption rules | Minimal-churn re-plan | Before/after comparison UX | Gemini tools, Docker and Cloud Run |
+| Final demo | Validator sign-off | Score/performance sign-off | Pitch, video and visual polish | Hosted hidden-instance rehearsal |
+
+### Integration rules
+
+- Treat the shared schemas as an API. Role 4 owns their implementation; Roles 1 and 2 must approve semantic changes.
+- Every hard-rule implementation needs a test fixture from Role 1 and a validator check before merging.
+- Role 2 may use solver-specific internal structures, but exported schedules must pass through the shared canonical `Schedule` object.
+- Role 3 must display validator facts and score components; never infer validity from a chart alone.
+- Role 4 must keep Gemini behind tool calls; raw model prose is never a scheduling input or a feasibility result.
+- For a conflict, use this precedence: official specification → organiser validator/mentor clarification → rule matrix → implementation convenience.
+
+### Daily decision checkpoints
+
+Run a 10-minute checkpoint at each integration point:
+
+1. **Feasibility:** Do we have zero hard violations on the public instance? If not, all optional work pauses.
+2. **Contract:** Did any input, output or API schema change? Update the decision log and mocks immediately.
+3. **Usability:** Can a teammate explain one schedule decision from the current UI without reading code?
+4. **Prize fit:** Does the recovery sandbox visibly preserve unaffected work, and does the UI make that obvious?
+5. **Deployment:** Can a clean machine/container run the app with only documented commands?
+
 ## Submission checklist
 
 - [ ] Public schedules for A, B and C have zero hard validator violations.
