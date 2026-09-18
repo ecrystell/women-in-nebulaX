@@ -1,7 +1,25 @@
-import type { RunView } from "../types";
+import type { RunView, ValidationReport } from "../types";
 
 /** Public-fixture UI data only. It is deliberately not validator-verified. */
 export const MOCK_API_VERSION = "v1";
+
+/** A typed local-check example for UI development; it is not organiser evidence. */
+export const localEvidenceMockViolation: ValidationReport["hard_violations"][number] = {
+  rule: "topology",
+  severity: "hard",
+  detail: "A001 occupancy footprint is missing one required location.",
+  activity_ids: ["A001"],
+  location_ids: ["SEC:BET:S15_S16:EB"],
+  week: 22,
+  co_share_group: "b4",
+  derived_footprint: ["SEC:BET:S15_S16:EB", "PLAT:BET:S15:EB"],
+  input_values: {
+    expected_location_count: 2,
+    observed_location_count: 1,
+    missing_location_count: 1,
+    unexpected_location_count: 0
+  }
+};
 
 export const publicFixtureMockRun: RunView = {
   run_id: "mock-public-a",

@@ -201,6 +201,9 @@ def test_invalid_candidate_fails_preflight_retains_evidence_and_blocks_exports()
         item["location_ids"] and item["week"]
         for item in report["hard_violations"]
     )
+    topology = next(item for item in report["hard_violations"] if item["rule"] == "topology")
+    assert topology["derived_footprint"]
+    assert topology["input_values"]["missing_location_count"] > 0
 
     export = client.get(f"/api/v1/runs/{run_id}/exports/SCHEDULE_ACCESS.csv")
     assert export.status_code == 409

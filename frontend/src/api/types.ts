@@ -33,7 +33,20 @@ export type ValidationReport = {
   status: ValidationStatus;
   feasible: boolean | null;
   message: string;
-  hard_violations: Array<{ rule: string; severity: "hard" | "soft"; detail: string }>;
+  hard_violations: Array<{
+    rule: string;
+    severity: "hard" | "soft";
+    detail: string;
+    activity_ids?: string[];
+    location_ids?: string[];
+    week?: number;
+    source_file?: string;
+    row?: number;
+    field?: string;
+    co_share_group?: string;
+    derived_footprint?: string[];
+    input_values?: Record<string, string | number | boolean | null>;
+  }>;
   soft_scores: Record<string, unknown>;
   detail: Record<string, unknown>;
 };

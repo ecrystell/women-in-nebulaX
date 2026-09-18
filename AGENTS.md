@@ -296,6 +296,7 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Shared preprocessing handoff | Complete | `app/domain/preprocessing.py` is the sole owner of routes, base/closure footprints, buffers, Live mirroring, H01–H02 crossover, planning calendar, and cross-file checks. Each API run prepares once and shares that representation with CP-SAT and local preflight. |
 | Export integration | Complete for locally clean candidates | Only a zero-hard-violation local candidate produces the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory; a clean result is still `unverified`. |
 | Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
+| R4.2A local validator evidence and fixture coverage | Complete | Local findings now carry activity/location/week context plus optional co-share group, derived footprint, and input values. Regression fixtures cover locally observable footprints, mix, capacity, allocation, workfront, scenario policy, cross-line Live ECLO evidence, and published local score components. No finding uses an invented organiser tag. |
 | Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
@@ -304,17 +305,17 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 ### Remaining implementation roadmap
 
-#### R4.2 — Complete deterministic validator coverage
+#### R4.2B — Organiser evidence and closure-order completion
 
 **Dependency:** the shared preprocessing handoff and organiser clarification/reference-validator observations.
 
 - Replace the current closure-order warning with deterministic checks once the legal global possession-time representation is agreed or observed from the organiser validator.
 - Confirm exact organiser rule tags, report fields, completion-date semantics, and score calculations using recorded website submissions.
-- Add a minimal valid/invalid fixture for every rule-matrix row, including buffer collision, Live mirroring, H01/H02 crossover, Scenario C cross-line ECLO continuity, and exact scoring examples.
-- Add structured evidence for each finding: activity IDs, locations, week, possession group, derived footprint, and the applicable input values.
+- Keep R4.2A's local evidence fixtures as regression coverage; do not upgrade their local rule names into organiser tags.
+- Add only the remaining organiser-dependent fixtures: globally ordered buffer/Live/H01-H02 collision examples, official report shapes/tags, and score examples confirmed by recorded organiser submissions.
 - Keep local status separate from organiser status: `unverified` is not `verified`; only organiser evidence may set `feasible=true` for competition claims.
 
-**Done when:** every published hard rule has deterministic coverage, a fixture, a stable local tag, and organiser evidence or an explicit documented uncertainty.
+**Done when:** organiser evidence confirms the unresolved closure timing, report/tag, and score semantics, or each remaining ambiguity is explicitly documented as uncheckable from the output CSVs.
 
 #### R4.3 — Extend the run gate beyond Scenario A
 

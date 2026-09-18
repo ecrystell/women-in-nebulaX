@@ -104,12 +104,18 @@ Evidence about a specific schedule produced by the validator adapter.
 
 ```ts
 type Violation = {
-  rule: string;                  // exact organiser tag when supplied
+  rule: string;                  // local rule name; organiser tags only when supplied
   severity: "hard" | "soft";
   detail: string;
   activity_ids?: string[];
   location_ids?: string[];
   week?: number;
+  source_file?: string;
+  row?: number;
+  field?: string;
+  co_share_group?: string;
+  derived_footprint?: string[];
+  input_values?: Record<string, string | number | boolean | null>;
 };
 
 type ValidationReport = {
@@ -127,6 +133,12 @@ type ValidationReport = {
   };
 };
 ```
+
+`derived_footprint` and `input_values` are local-check evidence. They make a
+finding inspectable without claiming that its `rule` is an organiser-validator
+tag. The three source-location fields identify an input problem when the
+information came from CSV ingestion or preprocessing. All evidence fields are
+optional because a rule may not have a meaningful value for every one.
 
 State meanings:
 

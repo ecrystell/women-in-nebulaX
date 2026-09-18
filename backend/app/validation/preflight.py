@@ -110,6 +110,9 @@ class _Preflight:
         activity_ids: Iterable[str] | None = None,
         location_ids: Iterable[str] | None = None,
         week: int | None = None,
+        co_share_group: str | None = None,
+        derived_footprint: Iterable[str] | None = None,
+        input_values: dict[str, str | int | float | bool | None] | None = None,
     ) -> None:
         violation: dict[str, object] = {"rule": rule, "severity": "hard", "detail": detail}
         if activity_ids:
@@ -118,6 +121,12 @@ class _Preflight:
             violation["location_ids"] = sorted(set(location_ids))
         if week:
             violation["week"] = week
+        if co_share_group:
+            violation["co_share_group"] = co_share_group
+        if derived_footprint:
+            violation["derived_footprint"] = sorted(set(derived_footprint))
+        if input_values:
+            violation["input_values"] = input_values
         self.violations.append(violation)
 
     def base_locations(self, activity: ActivityRecord) -> set[str]:
@@ -182,7 +191,20 @@ class _Preflight:
                     parts.append(f"missing {sorted(missing)}")
                 if extra:
                     parts.append(f"unexpected {sorted(extra)}")
-                self.add("topology", f"{activity_id} occupancy footprint is invalid: {'; '.join(parts)}.", activity_ids=[activity_id], location_ids=expected | actual, week=week)
+                self.add(
+                    "topology",
+                    f"{activity_id} occupancy footprint is invalid: {'; '.join(parts)}.",
+                    activity_ids=[activity_id],
+                    location_ids=expected | actual,
+                    week=week,
+                    derived_footprint=expected,
+                    input_values={
+                        "expected_location_count": len(expected),
+                        "observed_location_count": len(actual),
+                        "missing_location_count": len(missing),
+                        "unexpected_location_count": len(extra),
+                    },
+                )
         return groups_by_activity_week, accesses_by_activity
 
     def validate_workload_dates_and_precedence(self, accesses_by_activity: dict[str, list[AccessAssignment]]) -> None:
@@ -192,18 +214,42 @@ class _Preflight:
             assignments = accesses_by_activity.get(activity.activity_id, [])
             yield_total = sum(1.5 if assignment.eclo else 1.0 for assignment in assignments)
             if yield_total < activity.total_accesses:
-                self.add("workload", f"{activity.activity_id} delivers {yield_total:g} of required {activity.total_accesses:g} access units.", activity_ids=[activity.activity_id])
+                self.add(
+                    "workload",
+                    f"{activity.activity_id} delivers {yield_total:g} of required {activity.total_accesses:g} access units.",
+                    activity_ids=[activity.activity_id],
+                    derived_footprint=self.closure_locations(activity),
+                    input_values={"delivered_access_units": yield_total, "required_access_units": activity.total_accesses},
+                )
             if not assignments:
                 continue
             first_week[activity.activity_id] = min(item.week for item in assignments)
             last_week[activity.activity_id] = max(item.week for item in assignments)
             planned_week = self.planned_week(activity.planned_start_date)
             if planned_week and first_week[activity.activity_id] < planned_week:
-                self.add("planned_date", f"{activity.activity_id} starts in week {first_week[activity.activity_id]} before planned week {planned_week}.", activity_ids=[activity.activity_id], week=first_week[activity.activity_id])
+                self.add(
+                    "planned_date",
+                    f"{activity.activity_id} starts in week {first_week[activity.activity_id]} before planned week {planned_week}.",
+                    activity_ids=[activity.activity_id],
+                    week=first_week[activity.activity_id],
+                    derived_footprint=self.closure_locations(activity),
+                    input_values={
+                        "planned_start_date": activity.planned_start_date.isoformat(),
+                        "planned_start_week": planned_week,
+                        "actual_first_week": first_week[activity.activity_id],
+                    },
+                )
         for activity in self.instance.activities:
             predecessor = activity.predecessor_activity_id
             if predecessor and predecessor in last_week and activity.activity_id in first_week and first_week[activity.activity_id] <= last_week[predecessor]:
-                self.add("precedence", f"{activity.activity_id} starts in week {first_week[activity.activity_id]} before predecessor {predecessor} finishes in week {last_week[predecessor]}.", activity_ids=[predecessor, activity.activity_id], week=first_week[activity.activity_id])
+                self.add(
+                    "precedence",
+                    f"{activity.activity_id} starts in week {first_week[activity.activity_id]} before predecessor {predecessor} finishes in week {last_week[predecessor]}.",
+                    activity_ids=[predecessor, activity.activity_id],
+                    week=first_week[activity.activity_id],
+                    derived_footprint=self.closure_locations(activity),
+                    input_values={"predecessor_last_week": last_week[predecessor], "successor_first_week": first_week[activity.activity_id]},
+                )
 
     def validate_mixes_capacity_and_closures(self, groups_by_activity_week: dict[tuple[str, int], dict[str, str]]) -> dict[tuple[str, int], int]:
         possession_members: dict[tuple[str, int, str], set[str]] = defaultdict(set)
@@ -220,15 +266,39 @@ class _Preflight:
             pm, pc, coworker = types.count("PM"), types.count("PC"), types.count("C")
             legal = (pm == 1 and len(types) == 1) or (pm == 0 and pc == 1 and coworker <= 3 and len(types) == pc + coworker) or (pm == 0 and pc == 0 and 1 <= coworker <= 4)
             if not legal:
-                self.add("mix", f"Illegal possession mix at {location_id}, week {week}, group {group}: {types}.", activity_ids=members, location_ids=[location_id], week=week)
+                footprint = set().union(
+                    *(self.closure_locations(self.activities[activity_id]) for activity_id in members if activity_id in self.activities)
+                )
+                self.add(
+                    "mix",
+                    f"Illegal possession mix at {location_id}, week {week}, group {group}: {types}.",
+                    activity_ids=members,
+                    location_ids=[location_id],
+                    week=week,
+                    co_share_group=group,
+                    derived_footprint=footprint,
+                    input_values={"pm_count": pm, "pc_count": pc, "c_count": coworker, "member_count": len(types)},
+                )
 
         for (location_id, week), count in possession_count.items():
             capacity = self.supply.get(location_id, 0)
             allowed = capacity if self.schedule.scenario in {Scenario.A, Scenario.B} else capacity + 1
             if self.schedule.scenario == Scenario.A and count > allowed:
-                self.add("capacity", f"{location_id} has {count} possessions in week {week}; Scenario A capacity is {capacity}.", location_ids=[location_id], week=week)
+                self.add(
+                    "capacity",
+                    f"{location_id} has {count} possessions in week {week}; Scenario A capacity is {capacity}.",
+                    location_ids=[location_id],
+                    week=week,
+                    input_values={"possession_group_count": count, "supply_capacity": capacity, "allowed_possessions": allowed},
+                )
             elif self.schedule.scenario == Scenario.C and count > allowed:
-                self.add("capacity", f"{location_id} has {count} possessions in week {week}; Scenario C limit is supply {capacity} + 1.", location_ids=[location_id], week=week)
+                self.add(
+                    "capacity",
+                    f"{location_id} has {count} possessions in week {week}; Scenario C limit is supply {capacity} + 1.",
+                    location_ids=[location_id],
+                    week=week,
+                    input_values={"possession_group_count": count, "supply_capacity": capacity, "allowed_possessions": allowed},
+                )
 
         # We expand buffer, opposite-bound, and H01/H02 Live footprints above so
         # the solver has one deterministic source of derived locations.  The
@@ -249,6 +319,7 @@ class _Preflight:
     def validate_allocation_and_eclo(self, accesses_by_activity: dict[str, list[AccessAssignment]]) -> None:
         by_contract_type_week: dict[tuple[str, str, int], list[AccessAssignment]] = defaultdict(list)
         eclo_weeks_by_line: dict[str, set[int]] = defaultdict(set)
+        eclo_footprints_by_line: dict[str, set[str]] = defaultdict(set)
         for activity_id, assignments in accesses_by_activity.items():
             activity = self.activities.get(activity_id)
             if not activity or activity.contract_number not in self.projects:
@@ -257,23 +328,50 @@ class _Preflight:
             for assignment in assignments:
                 by_contract_type_week[(activity.contract_number, activity.activity_type, assignment.week)].append(assignment)
                 if self.schedule.scenario == Scenario.A and assignment.eclo:
-                    self.add("eclo", f"Scenario A forbids ECLO ({activity_id}, week {assignment.week}).", activity_ids=[activity_id], week=assignment.week)
+                    self.add(
+                        "eclo",
+                        f"Scenario A forbids ECLO ({activity_id}, week {assignment.week}).",
+                        activity_ids=[activity_id],
+                        week=assignment.week,
+                        derived_footprint=self.closure_locations(activity),
+                        input_values={"scenario": "A", "eclo": 1},
+                    )
                 if self.schedule.scenario == Scenario.C and assignment.eclo:
-                    lines = {location.split(":")[1] for location in self.closure_locations(activity)}
+                    footprint = self.closure_locations(activity)
+                    lines = {location.split(":")[1] for location in footprint}
                     for line in lines:
                         eclo_weeks_by_line[line].add(assignment.week)
+                        eclo_footprints_by_line[line].update(footprint)
         for (contract, activity_type, week), assignments in by_contract_type_week.items():
             project = self.projects[contract]
             nights = {assignment.access_night for assignment in assignments}
             if len(nights) > project.number_of_maximum_access_per_week:
-                self.add("weekly_allocation", f"{contract}/{activity_type} uses {len(nights)} access nights in week {week}; cap is {project.number_of_maximum_access_per_week}.", activity_ids=[assignment.activity_id for assignment in assignments], week=week)
+                self.add(
+                    "weekly_allocation",
+                    f"{contract}/{activity_type} uses {len(nights)} access nights in week {week}; cap is {project.number_of_maximum_access_per_week}.",
+                    activity_ids=[assignment.activity_id for assignment in assignments],
+                    week=week,
+                    input_values={"contract_number": contract, "activity_type": activity_type, "distinct_access_nights": len(nights), "maximum_access_per_week": project.number_of_maximum_access_per_week},
+                )
             for night in nights:
                 activity_ids = {assignment.activity_id for assignment in assignments if assignment.access_night == night}
                 if len(activity_ids) > project.number_of_workfronts:
-                    self.add("workfront", f"{contract}/{activity_type} runs {len(activity_ids)} activities on access night {night} in week {week}; workfront cap is {project.number_of_workfronts}.", activity_ids=activity_ids, week=week)
+                    self.add(
+                        "workfront",
+                        f"{contract}/{activity_type} runs {len(activity_ids)} activities on access night {night} in week {week}; workfront cap is {project.number_of_workfronts}.",
+                        activity_ids=activity_ids,
+                        week=week,
+                        input_values={"contract_number": contract, "activity_type": activity_type, "access_night": night, "activity_count": len(activity_ids), "workfront_limit": project.number_of_workfronts},
+                    )
         for line, weeks in eclo_weeks_by_line.items():
             if weeks and max(weeks) - min(weeks) + 1 > 2:
-                self.add("eclo", f"Scenario C ECLO on line {line} spans weeks {min(weeks)} to {max(weeks)}; maximum continuous window is two weeks.", week=min(weeks))
+                self.add(
+                    "eclo",
+                    f"Scenario C ECLO on line {line} spans weeks {min(weeks)} to {max(weeks)}; maximum continuous window is two weeks.",
+                    week=min(weeks),
+                    derived_footprint=eclo_footprints_by_line[line],
+                    input_values={"scenario": "C", "affected_line": line, "first_eclo_week": min(weeks), "last_eclo_week": max(weeks), "window_weeks": max(weeks) - min(weeks) + 1, "maximum_window_weeks": 2},
+                )
 
     def validate_results(self, accesses_by_activity: dict[str, list[AccessAssignment]], possession_count: dict[tuple[str, int], int]) -> dict[str, object]:
         results_by_contract: dict[str, ContractResult] = {}
@@ -310,9 +408,29 @@ class _Preflight:
             if actual and result:
                 expected_overrun = max(0, (actual - project.planned_completion_date).days)
                 if result.simulated_completion_date != actual or result.overrun_days != expected_overrun:
-                    self.add("results", f"{contract} RESULTS must report completion {actual.isoformat()} and overrun {expected_overrun} days.")
+                    self.add(
+                        "results",
+                        f"{contract} RESULTS must report completion {actual.isoformat()} and overrun {expected_overrun} days.",
+                        input_values={
+                            "contract_number": contract,
+                            "expected_completion_date": actual.isoformat(),
+                            "reported_completion_date": result.simulated_completion_date.isoformat(),
+                            "expected_overrun_days": expected_overrun,
+                            "reported_overrun_days": result.overrun_days,
+                        },
+                    )
                 if self.schedule.scenario == Scenario.B and expected_overrun:
-                    self.add("planned_date", f"Scenario B contract {contract} completes {expected_overrun} days after its planned completion date.")
+                    self.add(
+                        "planned_date",
+                        f"Scenario B contract {contract} completes {expected_overrun} days after its planned completion date.",
+                        input_values={
+                            "scenario": "B",
+                            "contract_number": contract,
+                            "planned_completion_date": project.planned_completion_date.isoformat(),
+                            "actual_completion_date": actual.isoformat(),
+                            "overrun_days": expected_overrun,
+                        },
+                    )
                 priority_overrun[str(project.contract_priority)] += expected_overrun
             for activity in self.instance.activities:
                 if activity.contract_number != contract or activity.activity_id not in completion_by_activity:

@@ -191,6 +191,9 @@ class Violation(ApiModel):
     source_file: str | None = None
     row: int | None = Field(default=None, ge=2)
     field: str | None = None
+    co_share_group: str | None = None
+    derived_footprint: list[str] | None = None
+    input_values: dict[str, str | int | float | bool | None] | None = None
 
 
 class ValidatorMetadata(ApiModel):
@@ -232,6 +235,7 @@ class ValidationReport(ApiModel):
             location_ids = item.get("location_ids")
             week = item.get("week")
             row = item.get("row")
+            input_values = item.get("input_values")
             return Violation(
                 rule=str(item.get("rule", "unknown")),
                 severity="hard",
@@ -246,6 +250,19 @@ class ValidationReport(ApiModel):
                 source_file=str(item["source_file"]) if item.get("source_file") else None,
                 row=row if isinstance(row, int) and row >= 2 else None,
                 field=str(item["field"]) if item.get("field") else None,
+                co_share_group=str(item["co_share_group"])
+                if item.get("co_share_group")
+                else None,
+                derived_footprint=[str(value) for value in item["derived_footprint"]]
+                if isinstance(item.get("derived_footprint"), list)
+                else None,
+                input_values={
+                    str(key): value
+                    for key, value in input_values.items()
+                    if isinstance(value, (str, int, float, bool)) or value is None
+                }
+                if isinstance(input_values, dict)
+                else None,
             )
 
         return cls(
