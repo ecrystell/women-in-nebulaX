@@ -97,7 +97,6 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
         {active && <rect x={x - 24} y={y - 35} width="48" height="70" rx="24" fill="#fbbf24" opacity="0.35" />}
         <rect x={x - 14} y={y - 25} width="28" height="50" rx="14" fill={active ? "#fbbf24" : "#f8fafc"} stroke="#111827" strokeWidth={active ? "5" : "4"} />
         <text x={x} y={labelY} textAnchor="middle" fill={active ? "#fff7cc" : "#fef3c7"} fontSize="13" fontWeight="800">{name}</text>
-        <text x={x} y={labelBelow ? labelY + 11 : labelY - 11} textAnchor="middle" fill="#fcd34d" fontSize="7" fontWeight="800" letterSpacing="0.7">INTERCHANGE</text>
       </g>
     );
   };
@@ -116,6 +115,10 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
       </div>
 
       <svg className="mt-4 h-auto w-full" viewBox="0 0 1000 330" role="img" aria-label="Metro Line Alpha and Metro Line Beta station topology">
+
+        {[610, 670].map((x) => (
+          <line key={x} x1={x} y1="143" x2={x} y2="235" stroke="#f8fafc" strokeWidth="5" strokeLinecap="round" opacity="0.9" />
+        ))}
 
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
