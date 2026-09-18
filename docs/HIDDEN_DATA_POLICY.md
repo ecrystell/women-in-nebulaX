@@ -40,3 +40,8 @@ one concurrent request and one instance, so it intentionally offers no durable
 run history. Application logs retain operational request IDs and error codes,
 not request bodies, evidence payloads, Gemini prompts/responses, CSV content or
 exports.
+
+The deployment uses instance-based CPU allocation while the single instance is
+alive. This is required for the in-memory background solver to complete after
+the upload response is returned; `min-instances=0` still permits scale-down,
+which removes all run data by design.

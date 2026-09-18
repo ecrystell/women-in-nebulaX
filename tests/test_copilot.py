@@ -43,6 +43,11 @@ class CapturingGenerator:
         return json.dumps({"answer": self.answer, "schedule_id": evidence.schedule_id})
 
 
+class FencedGenerator(CapturingGenerator):
+    def generate(self, evidence, mode) -> str:
+        return f"```json\n{super().generate(evidence, mode)}\n```"
+
+
 def set_services(generator: CapturingGenerator | None = None) -> tuple[RunService, CapturingGenerator]:
     previous = getattr(app.state, "run_service", None)
     if previous:
@@ -110,6 +115,17 @@ def test_copilot_never_falls_back_or_accepts_unsafe_model_text() -> None:
     assert unsafe.status_code == 503
     assert unsafe.json()["error"]["code"] == "copilot_unavailable"
     assert generator.payloads
+
+
+def test_copilot_accepts_a_fenced_json_provider_response() -> None:
+    _, _ = set_services(FencedGenerator())
+    client = TestClient(app)
+    run_id = create_run(client)
+
+    response = client.post(f"/api/v1/runs/{run_id}/copilot-responses", json={"mode": "handover_summary"})
+
+    assert response.status_code == 200
+    assert response.json()["mode"] == "handover_summary"
 
 
 def test_copilot_route_requires_schedule_cookie_and_expires(monkeypatch) -> None:

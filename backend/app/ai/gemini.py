@@ -94,7 +94,7 @@ class CopilotService:
 
     def respond(self, evidence: EvidenceEnvelope, mode: CopilotMode) -> CopilotResponse:
         try:
-            decoded = _Narrative.model_validate_json(self.generator.generate(evidence, mode))
+            decoded = _Narrative.model_validate_json(_normalise_json(self.generator.generate(evidence, mode)))
         except CopilotUnavailable:
             raise
         except Exception as error:
@@ -109,6 +109,22 @@ class CopilotService:
             generated_at=datetime.now(timezone.utc),
             verification_disclaimer=DISCLAIMER,
         )
+
+
+def _normalise_json(raw: str) -> str:
+    """Accept a JSON response even when a provider unnecessarily wraps it in a fence.
+
+    The structured schema is still parsed and validated immediately afterwards.
+    This does not accept prose before or after the JSON value.
+    """
+
+    value = raw.strip()
+    if not value.startswith("```"):
+        return value
+    lines = value.splitlines()
+    if len(lines) < 3 or not lines[-1].strip().startswith("```"):
+        return value
+    return "\n".join(lines[1:-1]).strip()
 
 
 def _contains_prohibited_claim(answer: str) -> bool:
