@@ -363,6 +363,11 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** LLM output is useful explanation around deterministic evidence, never a second scheduler or validator.
 
+**R4.6 implementation status:** The read-only evidence/API/UI and Vertex
+adapter are implemented. Production deployment remains gated on creating the
+dedicated Cloud Run service identity and performing the public-fixture-only
+smoke test; no hidden instance is used for deployment validation.
+
 #### R4.7 — Deploy and rehearse
 
 **Dependency:** real Scenario A/B/C schedules, stable UI, and validator evidence workflow.

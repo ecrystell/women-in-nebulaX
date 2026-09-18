@@ -5,9 +5,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import secrets
 import shutil
 import tempfile
 import zipfile
+from hmac import compare_digest
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
@@ -33,6 +35,8 @@ from app.api.schemas import (
 from app.ingestion.csv_loader import INPUT_TABLES
 from app.domain.models import Scenario, ScenarioSchedule
 from app.domain.preprocessing import PreparedInstance, prepare_instance
+from app.ai import evidence as evidence_builder
+from app.api.schemas import CopilotMode, EvidenceEnvelope
 from app.exports.csv_writer import write_submission
 from app.validation.adapter import OfficialValidatorAdapter
 from app.validation.preflight import preparation_report, validate_schedule
@@ -64,6 +68,10 @@ class SubmissionPackageError(ValueError):
     def __init__(self, code: str, message: str) -> None:
         self.code = code
         super().__init__(message)
+
+
+class EvidenceUnavailable(ValueError):
+    """A run has no candidate schedule from which to build safe evidence."""
 
 
 @dataclass
@@ -105,6 +113,11 @@ class RunRecord:
     scenario: Scenario
     created_at: datetime
     updated_at: datetime
+    access_token: str = field(repr=False, default="")
+    access_token_hash: str = field(repr=False, default="")
+    prepared_instance: PreparedInstance | None = field(repr=False, default=None)
+    last_accessed_at: datetime | None = None
+    copilot_request_times: list[datetime] = field(default_factory=list, repr=False)
     recovery_of_run_id: str | None = None
     scenario_change: ScenarioChange | None = None
     status: RunStatus = RunStatus.ACCEPTED
@@ -150,6 +163,12 @@ class InMemoryRunStore:
         with self._lock:
             return self._records.get(run_id)
 
+    def remove(self, run_id: str) -> None:
+        with self._lock:
+            record = self._records.pop(run_id, None)
+        if record and record.export_dir:
+            shutil.rmtree(record.export_dir, ignore_errors=True)
+
     def clear(self) -> None:
         with self._lock:
             records = list(self._records.values())
@@ -171,6 +190,14 @@ class RunService:
         self.validator = validator or OfficialValidatorAdapter()
         self.store = store or InMemoryRunStore()
 
+    @staticmethod
+    def _run_ttl_seconds() -> int:
+        raw = os.getenv("RAILACCESS_RUN_TTL_SECONDS", "1800")
+        try:
+            return max(60, min(int(raw), 86_400))
+        except ValueError:
+            return 1800
+
     def create_run(
         self,
         input_instance: InputInstance,
@@ -180,17 +207,35 @@ class RunService:
         scenario_change: ScenarioChange | None = None,
     ) -> RunRecord:
         now = utc_now()
+        access_token = secrets.token_urlsafe(32)
         record = RunRecord(
             run_id=str(uuid4()),
             input_instance=input_instance,
             scenario=scenario,
             created_at=now,
             updated_at=now,
+            access_token=access_token,
+            access_token_hash=hashlib.sha256(access_token.encode("utf-8")).hexdigest(),
+            last_accessed_at=now,
             recovery_of_run_id=recovery_of_run_id,
             scenario_change=scenario_change,
             validation_report=ValidationReport.from_domain(self.validator.status()),
         )
         self.store.add(record)
+        return record
+
+    def authorize(self, run_id: str, token: str | None) -> RunRecord | None:
+        """Return the active run only for its issuing browser's opaque cookie."""
+
+        record = self.store.get(run_id)
+        token_hash = hashlib.sha256(token.encode("utf-8")).hexdigest() if token else ""
+        if record is None or not token or not compare_digest(record.access_token_hash, token_hash):
+            return None
+        last_access = record.last_accessed_at or record.updated_at
+        if (utc_now() - last_access).total_seconds() > self._run_ttl_seconds():
+            self.store.remove(run_id)
+            return None
+        record.last_accessed_at = utc_now()
         return record
 
     def dispatch(self, run_id: str) -> None:
@@ -209,6 +254,7 @@ class RunService:
             )
             record.updated_at = utc_now()
             return
+        record.prepared_instance = preparation.prepared
         try:
             output = self.solver.solve(preparation.prepared, record.scenario, record.scenario_change)
         except SolverUnavailable as error:
@@ -274,6 +320,44 @@ class RunService:
     def get_view(self, run_id: str) -> RunView | None:
         record = self.store.get(run_id)
         return record.to_view() if record else None
+
+    def evidence_for(self, record: RunRecord, mode: CopilotMode, activity_id: str | None = None) -> EvidenceEnvelope:
+        if record.schedule is None or record.validation_report is None or record.prepared_instance is None:
+            raise EvidenceUnavailable("Evidence requires a candidate schedule and shared preprocessing facts.")
+        common = {
+            "run_id": record.run_id,
+            "schedule_id": record.schedule.schedule_id,
+            "scenario": record.scenario,
+            "prepared": record.prepared_instance,
+            "schedule_placements": record.schedule.placements,
+            "report": record.validation_report,
+        }
+        if mode is CopilotMode.ACTIVITY_EXPLANATION:
+            if activity_id is None:
+                raise EvidenceUnavailable("An activity explanation requires an activity id.")
+            result = evidence_builder.activity_evidence(
+                **common,
+                contract_results=record.schedule.contract_results,
+                activity_id=activity_id,
+            )
+            if result is None:
+                raise EvidenceUnavailable(f"No scheduled activity {activity_id} exists in this run.")
+            return result
+        if mode is CopilotMode.CAPACITY_HOTSPOTS:
+            return evidence_builder.hotspots_evidence(**common)
+        return evidence_builder.handover_evidence(
+            **common,
+            contract_results=record.schedule.contract_results,
+        )
+
+    def consume_copilot_request(self, record: RunRecord) -> bool:
+        now = utc_now()
+        cutoff = now.timestamp() - 60
+        record.copilot_request_times = [item for item in record.copilot_request_times if item.timestamp() >= cutoff]
+        if len(record.copilot_request_times) >= 10:
+            return False
+        record.copilot_request_times.append(now)
+        return True
 
     def get_export(self, run_id: str, filename: str) -> Path | None:
         record = self.store.get(run_id)

@@ -1,0 +1,15 @@
+substitutions:
+  _RAILACCESS_BUILD_COMMIT: unknown
+  _IMAGE: us-central1-docker.pkg.dev/PROJECT/railaccess/railaccess-ai:unknown
+
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - --build-arg
+      - RAILACCESS_BUILD_COMMIT=${_RAILACCESS_BUILD_COMMIT}
+      - -t
+      - ${_IMAGE}
+      - .
+images:
+  - ${_IMAGE}

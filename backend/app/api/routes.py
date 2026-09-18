@@ -3,18 +3,24 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, BackgroundTasks, File, Form, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse
 
 from app.api.errors import ApiException
-from app.api.run_service import RunService, SubmissionPackageError
+from app.ai.gemini import CopilotService, CopilotUnavailable
+from app.api.run_service import EvidenceUnavailable, RunRecord, RunService, SubmissionPackageError
 from app.api.schemas import (
     ApiFieldError,
+    CopilotRequest,
+    CopilotResponse,
+    CopilotMode,
+    EvidenceEnvelope,
     InputInstance,
     InputSource,
     OrganiserEvidenceInput,
@@ -27,10 +33,47 @@ from app.ingestion.csv_loader import INPUT_TABLES, InstanceLoadError, load_insta
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
 ALLOWED_EXPORTS = frozenset({"SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "RESULTS.csv"})
+NO_STORE_HEADERS = {"Cache-Control": "no-store"}
+MAX_FILE_BYTES = 10 * 1024 * 1024
+MAX_PACKAGE_BYTES = 40 * 1024 * 1024
 
 
 def get_service(request: Request) -> RunService:
     return request.app.state.run_service
+
+
+def get_copilot(request: Request) -> CopilotService:
+    return request.app.state.copilot_service
+
+
+def _cookie_name(run_id: str) -> str:
+    return f"railaccess_run_{run_id.replace('-', '')}"
+
+
+def _cookie_secure() -> bool:
+    return os.getenv("RAILACCESS_COOKIE_SECURE", "false").lower() == "true"
+
+
+def _authorize(request: Request, run_id: str) -> RunRecord:
+    record = get_service(request).authorize(run_id, request.cookies.get(_cookie_name(run_id)))
+    if record is None:
+        # Do not disclose whether a guessed run id exists to another browser.
+        raise ApiException(404, "run_not_found", f"No run exists with id {run_id}.")
+    return record
+
+
+def _set_run_cookie(response: Response, record: RunRecord, service: RunService) -> None:
+    response.set_cookie(
+        key=_cookie_name(record.run_id),
+        value=record.access_token,
+        max_age=service._run_ttl_seconds(),
+        httponly=True,
+        secure=_cookie_secure(),
+        samesite="lax",
+        path=f"/api/v1/runs/{record.run_id}",
+    )
+    # The plaintext value is needed only to issue this one browser cookie.
+    record.access_token = ""
 
 
 def _field_errors_for_filenames(filenames: list[str]) -> list[ApiFieldError]:
@@ -57,6 +100,7 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
     with tempfile.TemporaryDirectory(prefix="railaccess-upload-") as temp_dir:
         directory = Path(temp_dir)
         file_checksums: dict[str, str] = {}
+        package_bytes = 0
         for upload in files:
             filename = upload.filename or ""
             if Path(filename).name != filename:
@@ -67,6 +111,14 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
                     [ApiFieldError(field="files", message=f"invalid filename: {filename}")],
                 )
             contents = await upload.read()
+            package_bytes += len(contents)
+            if len(contents) > MAX_FILE_BYTES or package_bytes > MAX_PACKAGE_BYTES:
+                raise ApiException(
+                    413,
+                    "input_too_large",
+                    "Each CSV is limited to 10 MiB and the complete input package to 40 MiB.",
+                    [ApiFieldError(field="files", message=f"upload limit exceeded at {filename}")],
+                )
             file_checksums[filename] = hashlib.sha256(contents).hexdigest()
             (directory / filename).write_bytes(contents)
         try:
@@ -105,6 +157,7 @@ def health(request: Request) -> dict[str, object]:
 async def create_run(
     request: Request,
     background_tasks: BackgroundTasks,
+    response: Response,
     scenario: Scenario = Form(...),
     files: list[UploadFile] = File(...),
 ) -> RunView:
@@ -112,15 +165,14 @@ async def create_run(
     instance = await parse_uploaded_instance(files)
     record = service.create_run(instance, scenario)
     background_tasks.add_task(service.dispatch, record.run_id)
+    _set_run_cookie(response, record, service)
+    response.headers.update(NO_STORE_HEADERS)
     return record.to_view()
 
 
 @router.get("/runs/{run_id}", response_model=RunView)
 def get_run(request: Request, run_id: str) -> RunView:
-    view = get_service(request).get_view(run_id)
-    if view is None:
-        raise ApiException(404, "run_not_found", f"No run exists with id {run_id}.")
-    return view
+    return _authorize(request, run_id).to_view()
 
 
 @router.get("/runs/{run_id}/exports/{filename}")
@@ -128,9 +180,7 @@ def download_export(request: Request, run_id: str, filename: str) -> FileRespons
     if filename not in ALLOWED_EXPORTS:
         raise ApiException(404, "export_not_found", "The requested export filename is not supported.")
     service = get_service(request)
-    view = service.get_view(run_id)
-    if view is None:
-        raise ApiException(404, "run_not_found", f"No run exists with id {run_id}.")
+    view = _authorize(request, run_id).to_view()
     path = service.get_export(run_id, filename)
     if path is None:
         if view.problem is not None and view.problem.code == "preflight_failed":
@@ -144,7 +194,7 @@ def download_export(request: Request, run_id: str, filename: str) -> FileRespons
             "export_unavailable",
             "Exports are available only after a candidate schedule succeeds.",
         )
-    return FileResponse(path, media_type="text/csv", filename=filename)
+    return FileResponse(path, media_type="text/csv", filename=filename, headers=NO_STORE_HEADERS)
 
 
 def _submission_exception(error: SubmissionPackageError) -> ApiException:
@@ -159,6 +209,7 @@ def _submission_exception(error: SubmissionPackageError) -> ApiException:
 
 @router.post("/runs/{run_id}/submission-packages", response_model=SubmissionPackageSummary, status_code=201)
 def create_submission_package(request: Request, run_id: str) -> SubmissionPackageSummary:
+    _authorize(request, run_id)
     try:
         return get_service(request).create_submission_package(run_id).to_summary()
     except SubmissionPackageError as error:
@@ -167,6 +218,7 @@ def create_submission_package(request: Request, run_id: str) -> SubmissionPackag
 
 @router.get("/runs/{run_id}/submission-packages/{package_id}/download")
 def download_submission_package(request: Request, run_id: str, package_id: str) -> FileResponse:
+    _authorize(request, run_id)
     try:
         package = get_service(request).get_submission_package(run_id, package_id)
     except SubmissionPackageError as error:
@@ -177,6 +229,7 @@ def download_submission_package(request: Request, run_id: str, package_id: str) 
         package.bundle_path,
         media_type="application/zip",
         filename=f"railaccess-submission-{package_id}.zip",
+        headers=NO_STORE_HEADERS,
     )
 
 
@@ -190,6 +243,7 @@ def record_organiser_evidence(
     package_id: str,
     payload: OrganiserEvidenceInput,
 ) -> SubmissionPackageSummary:
+    _authorize(request, run_id)
     try:
         return get_service(request).record_organiser_evidence(run_id, package_id, payload).to_summary()
     except SubmissionPackageError as error:
@@ -198,11 +252,66 @@ def record_organiser_evidence(
 
 @router.get("/runs/{run_id}/submission-packages/{package_id}/evidence-record")
 def download_evidence_record(request: Request, run_id: str, package_id: str) -> FileResponse:
+    _authorize(request, run_id)
     try:
         path = get_service(request).get_evidence_record(run_id, package_id)
     except SubmissionPackageError as error:
         raise _submission_exception(error) from error
-    return FileResponse(path, media_type="application/json", filename=f"railaccess-evidence-{package_id}.json")
+    return FileResponse(
+        path,
+        media_type="application/json",
+        filename=f"railaccess-evidence-{package_id}.json",
+        headers=NO_STORE_HEADERS,
+    )
+
+
+def _evidence_exception(error: EvidenceUnavailable) -> ApiException:
+    message = str(error)
+    if message.startswith("No scheduled activity"):
+        return ApiException(404, "activity_not_found", message)
+    return ApiException(409, "evidence_unavailable", message)
+
+
+@router.get("/runs/{run_id}/evidence/activities/{activity_id}", response_model=EvidenceEnvelope)
+def get_activity_evidence(request: Request, run_id: str, activity_id: str) -> EvidenceEnvelope:
+    record = _authorize(request, run_id)
+    try:
+        return get_service(request).evidence_for(record, CopilotMode.ACTIVITY_EXPLANATION, activity_id)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
+
+
+@router.get("/runs/{run_id}/evidence/capacity-hotspots", response_model=EvidenceEnvelope)
+def get_capacity_hotspots(request: Request, run_id: str) -> EvidenceEnvelope:
+    record = _authorize(request, run_id)
+    try:
+        return get_service(request).evidence_for(record, CopilotMode.CAPACITY_HOTSPOTS)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
+
+
+@router.get("/runs/{run_id}/evidence/handover", response_model=EvidenceEnvelope)
+def get_handover_evidence(request: Request, run_id: str) -> EvidenceEnvelope:
+    record = _authorize(request, run_id)
+    try:
+        return get_service(request).evidence_for(record, CopilotMode.HANDOVER_SUMMARY)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
+
+
+@router.post("/runs/{run_id}/copilot-responses", response_model=CopilotResponse)
+def create_copilot_response(request: Request, run_id: str, payload: CopilotRequest) -> CopilotResponse:
+    record = _authorize(request, run_id)
+    service = get_service(request)
+    if not service.consume_copilot_request(record):
+        raise ApiException(503, "copilot_unavailable", "Try the copilot again in a minute.")
+    try:
+        evidence = service.evidence_for(record, payload.mode, payload.activity_id)
+        return get_copilot(request).respond(evidence, payload.mode)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
+    except CopilotUnavailable as error:
+        raise ApiException(503, "copilot_unavailable", str(error)) from error
 
 
 @router.post("/runs/{run_id}/recovery", response_model=RunView, status_code=202)
@@ -211,6 +320,7 @@ def create_recovery(
     run_id: str,
     change: ScenarioChange,
     background_tasks: BackgroundTasks,
+    response: Response,
 ) -> RunView:
     if change.confirmed_at is None:
         raise ApiException(
@@ -220,9 +330,7 @@ def create_recovery(
             [ApiFieldError(field="confirmed_at", message="confirmation is required")],
         )
     service = get_service(request)
-    base = service.get_view(run_id)
-    if base is None:
-        raise ApiException(404, "run_not_found", f"No run exists with id {run_id}.")
+    base = _authorize(request, run_id).to_view()
     if base.status.value != "succeeded" or base.schedule is None:
         raise ApiException(
             409,
@@ -239,4 +347,6 @@ def create_recovery(
     if record is None:
         raise ApiException(409, "recovery_unavailable", "Recovery is unavailable for this run.")
     background_tasks.add_task(service.dispatch, record.run_id)
+    _set_run_cookie(response, record, service)
+    response.headers.update(NO_STORE_HEADERS)
     return record.to_view()

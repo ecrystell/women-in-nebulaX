@@ -1,5 +1,8 @@
 import type {
   ApiErrorResponse,
+  CopilotMode,
+  CopilotResponse,
+  EvidenceEnvelope,
   Health,
   OrganiserEvidenceInput,
   RunView,
@@ -35,6 +38,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 export const railAccessApi = {
   getHealth: () => request<Health>("/health"),
   getRun: (runId: string) => request<RunView>(`/runs/${runId}`),
+  getActivityEvidence: (runId: string, activityId: string) => request<EvidenceEnvelope>(`/runs/${runId}/evidence/activities/${encodeURIComponent(activityId)}`),
+  getCapacityHotspots: (runId: string) => request<EvidenceEnvelope>(`/runs/${runId}/evidence/capacity-hotspots`),
+  getHandoverEvidence: (runId: string) => request<EvidenceEnvelope>(`/runs/${runId}/evidence/handover`),
+  createCopilotResponse: (runId: string, mode: CopilotMode, activityId?: string) =>
+    request<CopilotResponse>(`/runs/${runId}/copilot-responses`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, activity_id: activityId })
+    }),
   createRun: (scenario: Scenario, files: File[]) => {
     const body = new FormData();
     body.set("scenario", scenario);

@@ -117,6 +117,20 @@ The official data already provides location, workload, possession type and prior
 
 Every response is grounded in structured solver output. Gemini cannot directly allocate work, bypass a hard rule, or claim a plan is feasible.
 
+### Hidden-instance and copilot handling
+
+Hidden scheduling data stays in the live Cloud Run process only and is removed
+after 30 minutes of inactivity, restart, revision rollout, or scale-down. A
+per-run browser cookie protects runs, exports, packages, evidence and recovery
+requests; a run ID alone is insufficient.
+
+The read-only copilot sends only one selected deterministic evidence envelope to
+Gemini: an activity explanation, up to ten capacity hotspots, or a compact
+handover summary. It never sends raw CSVs, full schedules, exports, submission
+packages, checksums, organiser metadata, or free-text disruption requests. Its
+answers remain unverified and cannot establish feasibility. See
+[the hidden-data policy](docs/HIDDEN_DATA_POLICY.md) for the operational rules.
+
 ## Tech stack
 
 | Layer | Technology | Role |

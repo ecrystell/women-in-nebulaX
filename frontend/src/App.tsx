@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { railAccessApi, RailAccessApiError } from "./api/client";
 import type { Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario } from "./api/types";
 import { TrainScene } from "./TrainScene";
+import { GroundedCopilot } from "./GroundedCopilot";
 
 type MaintenanceEvent = {
   id: string;
@@ -632,7 +633,7 @@ export default function App() {
           onRecordEvidence={recordEvidence}
         />
       </section>
-      <CopilotButton />
+      <GroundedCopilot run={run} />
     </main>
   );
 }

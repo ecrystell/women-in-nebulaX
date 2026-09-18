@@ -107,6 +107,48 @@ export type Health = {
   validator_status: ValidationStatus;
 };
 
+export type EvidenceValidation = {
+  status: ValidationStatus;
+  feasible: boolean | null;
+  hard_violation_count: number;
+  message: string;
+};
+
+export type CapacityHotspot = {
+  location_id: string;
+  week: number;
+  possession_group_count: number;
+  supply_capacity: number;
+  allowed_possessions: number;
+  excess_access_nights: number;
+  utilisation: number;
+  co_share_groups: string[];
+  activity_ids: string[];
+};
+
+export type EvidenceEnvelope = {
+  evidence_version: "1";
+  run_id: string;
+  schedule_id: string;
+  scenario: Scenario;
+  generated_at: string;
+  validation: EvidenceValidation;
+  payload:
+    | { kind: "activity"; activity_id: string; contract_number: string; activity_type: string; access_type: string; nature_of_activity: string; total_accesses_required: number; planned_start_week: number; predecessor_activity_id?: string; placements: Placement[]; closure_footprint: string[]; contract_result?: ContractResult; local_findings: ValidationReport["hard_violations"] }
+    | { kind: "capacity_hotspots"; hotspots: CapacityHotspot[] }
+    | { kind: "handover"; placement_count: number; scheduled_activity_count: number; contract_results: ContractResult[]; local_score_components: Record<string, unknown>; top_hotspots: CapacityHotspot[] };
+};
+
+export type CopilotMode = "activity_explanation" | "capacity_hotspots" | "handover_summary";
+export type CopilotResponse = {
+  mode: CopilotMode;
+  answer: string;
+  evidence: EvidenceEnvelope;
+  model: string;
+  generated_at: string;
+  verification_disclaimer: string;
+};
+
 export type ApiErrorResponse = {
   request_id: string;
   error: {

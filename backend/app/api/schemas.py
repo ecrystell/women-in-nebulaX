@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -320,6 +320,109 @@ class RunStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     BLOCKED = "blocked"
+
+
+class EvidenceKind(str, Enum):
+    ACTIVITY = "activity"
+    CAPACITY_HOTSPOTS = "capacity_hotspots"
+    HANDOVER = "handover"
+
+
+class EvidenceValidation(ApiModel):
+    """Small, non-authoritative validation context safe to show beside AI text."""
+
+    status: ValidationStatus
+    feasible: bool | None = None
+    hard_violation_count: int = Field(ge=0)
+    message: str
+
+
+class ActivityEvidence(ApiModel):
+    kind: Literal[EvidenceKind.ACTIVITY]
+    activity_id: str
+    contract_number: str
+    activity_type: str
+    access_type: str
+    nature_of_activity: str
+    total_accesses_required: int = Field(gt=0)
+    planned_start_week: int = Field(gt=0)
+    predecessor_activity_id: str | None = None
+    placements: list[Placement]
+    closure_footprint: list[str]
+    contract_result: ContractResult | None = None
+    local_findings: list[Violation] = Field(default_factory=list)
+
+
+class CapacityHotspot(ApiModel):
+    location_id: str
+    week: int = Field(gt=0)
+    possession_group_count: int = Field(ge=0)
+    supply_capacity: int = Field(ge=0)
+    allowed_possessions: int = Field(ge=0)
+    excess_access_nights: int = Field(ge=0)
+    utilisation: float = Field(ge=0)
+    co_share_groups: list[str]
+    activity_ids: list[str]
+
+
+class CapacityHotspotsEvidence(ApiModel):
+    kind: Literal[EvidenceKind.CAPACITY_HOTSPOTS]
+    hotspots: list[CapacityHotspot] = Field(max_length=10)
+
+
+class HandoverEvidence(ApiModel):
+    kind: Literal[EvidenceKind.HANDOVER]
+    placement_count: int = Field(ge=0)
+    scheduled_activity_count: int = Field(ge=0)
+    contract_results: list[ContractResult]
+    local_score_components: dict[str, Any]
+    top_hotspots: list[CapacityHotspot] = Field(max_length=3)
+
+
+EvidencePayload = Annotated[
+    ActivityEvidence | CapacityHotspotsEvidence | HandoverEvidence,
+    Field(discriminator="kind"),
+]
+
+
+class EvidenceEnvelope(ApiModel):
+    evidence_version: Literal["1"] = "1"
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    generated_at: datetime
+    validation: EvidenceValidation
+    payload: EvidencePayload
+
+
+class CopilotMode(str, Enum):
+    ACTIVITY_EXPLANATION = "activity_explanation"
+    CAPACITY_HOTSPOTS = "capacity_hotspots"
+    HANDOVER_SUMMARY = "handover_summary"
+
+
+class CopilotRequest(ApiModel):
+    mode: CopilotMode
+    activity_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def activity_is_required_only_for_activity_explanations(self) -> "CopilotRequest":
+        if self.mode is CopilotMode.ACTIVITY_EXPLANATION and not self.activity_id:
+            raise ValueError("activity_id is required for an activity explanation")
+        if self.mode is not CopilotMode.ACTIVITY_EXPLANATION and self.activity_id is not None:
+            raise ValueError("activity_id is supported only for an activity explanation")
+        return self
+
+
+class CopilotResponse(ApiModel):
+    mode: CopilotMode
+    answer: str = Field(min_length=1, max_length=2000)
+    evidence: EvidenceEnvelope
+    model: str
+    generated_at: datetime
+    verification_disclaimer: Literal[
+        "Organiser verification is unavailable or unverified; this explanation does not establish feasibility."
+    ] = "Organiser verification is unavailable or unverified; this explanation does not establish feasibility."
 
 
 class RunProblem(ApiModel):
