@@ -1,21 +1,80 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-  background: #07111f;
+  background: #f7f5ee;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  background: #f7f5ee;
 }
 
-.night-sky {
+.rail-editorial {
   background:
-    radial-gradient(circle at 74% 16%, rgb(30 64 175 / 24%), transparent 25rem),
-    radial-gradient(circle at 18% 82%, rgb(8 145 178 / 14%), transparent 28rem),
-    linear-gradient(160deg, #020617 0%, #08152d 55%, #020617 100%);
+    radial-gradient(circle at 78% 8%, rgb(255 255 255 / 86%), transparent 22rem),
+    linear-gradient(180deg, #e7eff2 0%, #f7f5ee 26rem, #f7f5ee 100%);
+}
+
+.editorial-hero {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgb(255 255 255 / 35%);
+  border-radius: 2rem;
+  padding: clamp(1.5rem, 4vw, 3.25rem);
+  background:
+    radial-gradient(circle at 82% 12%, rgb(34 211 238 / 20%), transparent 20rem),
+    linear-gradient(125deg, rgb(9 17 31 / 94%), rgb(20 34 54 / 86%));
+  box-shadow: 0 1.8rem 4rem rgb(31 41 55 / 18%);
+}
+
+.editorial-title em {
+  font-family: Georgia, "Times New Roman", serif;
+  font-weight: 400;
+}
+
+.editorial-card {
+  border-color: #e5e1d5 !important;
+  border-radius: 1.5rem;
+  background: rgb(255 255 255 / 92%) !important;
+  box-shadow: 0 1.15rem 2.75rem rgb(59 50 35 / 10%);
+}
+
+.editorial-card .text-white {
+  color: #202838 !important;
+}
+
+.editorial-card .text-slate-400,
+.editorial-card .text-slate-300 {
+  color: #687185 !important;
+}
+
+.editorial-card .border-slate-700,
+.editorial-card .border-slate-700\/80 {
+  border-color: #e5e1d5 !important;
+}
+
+.editorial-card label {
+  border-color: #d8d2c1 !important;
+  background: #fbfaf6 !important;
+}
+
+.editorial-card .calendar-arrow {
+  border-color: #ded7c7;
+  background: #fffefa;
+  color: #3155cf;
+}
+
+.editorial-card .calendar-arrow:hover {
+  border-color: #3155cf;
+  background: #f1f4ff;
+}
+
+.editorial-card .calendar-day,
+.editorial-card .calendar-event-date {
+  color: #465166;
 }
 
 .twinkle-star {

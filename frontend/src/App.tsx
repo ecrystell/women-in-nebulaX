@@ -105,7 +105,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
   };
 
   return (
-    <section className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">01 · Network view</p>
@@ -177,7 +177,7 @@ function Calendar({
   );
 
   return (
-    <section className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">02 · Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -370,8 +370,8 @@ export default function App() {
   };
 
   return (
-    <main className="night-sky relative min-h-screen overflow-hidden px-4 py-6 text-slate-100 sm:px-8 sm:py-8">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-70">
+    <main className="rail-editorial relative min-h-screen overflow-hidden px-4 py-6 text-slate-100 sm:px-8 sm:py-8">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-35">
         <TrainScene />
       </div>
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
@@ -381,13 +381,13 @@ export default function App() {
       </div>
 
       <section className="relative z-10 mx-auto max-w-7xl pb-28">
-        <header className="flex flex-col gap-5 border-b border-slate-700/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
+        <header className="editorial-hero flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
               <span className="h-px w-9 bg-cyan-400" />
               RailAccess AI · Planner console
             </div>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl">Plan the night. Protect the first train.</h1>
+            <h1 className="editorial-title mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl">Plan the night. <em>Protect the first train.</em></h1>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
               An explainable control room for possession planning across the Alpha and Beta rail lines.
             </p>
@@ -411,7 +411,7 @@ export default function App() {
         </div>
 
         <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr_0.8fr]">
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">03 · Build schedule</p>
             <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
@@ -430,7 +430,7 @@ export default function App() {
             </p>
           </div>
 
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">04 · Update event</p>
             <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
@@ -447,7 +447,7 @@ export default function App() {
             <p className="mt-3 text-xs text-slate-500">Confirmed work will remain locked when the recovery optimiser is connected.</p>
           </div>
 
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+          <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05–06 · Optimise</p>
             <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
