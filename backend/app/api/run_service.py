@@ -18,29 +18,49 @@ from typing import Protocol
 from uuid import uuid4
 
 from app.api.schemas import (
+    CapabilityReport,
+    FeatureCapability,
     InputInstance,
     InputInstanceSummary,
+    InputSource,
     RunProblem,
     RunStatus,
     RunView,
     OrganiserEvidence,
     OrganiserEvidenceInput,
+    PlacementChange,
     ScenarioChange,
+    ScenarioCapability,
+    ScenarioChangeDraft,
+    ScenarioChangeDraftStatus,
     Schedule,
     ScheduleDiff,
     SubmissionManifest,
     SubmissionPackageSummary,
     ValidationReport,
 )
-from app.ingestion.csv_loader import INPUT_TABLES
+from app.ingestion.csv_loader import INPUT_TABLES, load_instance
 from app.domain.models import Scenario, ScenarioSchedule
 from app.domain.preprocessing import PreparedInstance, prepare_instance
 from app.ai import evidence as evidence_builder
 from app.api.schemas import CopilotMode, EvidenceEnvelope
 from app.exports.csv_writer import write_submission
 from app.validation.adapter import OfficialValidatorAdapter
-from app.validation.preflight import preparation_report, validate_schedule
+from app.validation.preflight import load_submission, preparation_report, validate_schedule
 from app.api.solver_contract import ScenarioUnavailable, SolverInputInvalid, SolverUnavailable
+
+
+def _public_data_root() -> Path:
+    """Locate vendored public data in both source and single-container layouts."""
+
+    module_path = Path(__file__).resolve()
+    candidates = (module_path.parents[3] / "data", module_path.parents[2] / "data")
+    return next((candidate for candidate in candidates if candidate.is_dir()), candidates[0])
+
+
+PUBLIC_INSTANCE_DIR = _public_data_root() / "public-instance"
+PUBLIC_SUBMISSION_DIR = PUBLIC_INSTANCE_DIR / "sample-submission"
+DEMO_NOTICE = "Public demonstration fixture \u2014 not a newly optimised schedule."
 
 
 def utc_now() -> datetime:
@@ -125,6 +145,9 @@ class RunRecord:
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
     problem: RunProblem | None = None
+    demo: bool = False
+    demo_notice: str | None = None
+    disruption_drafts: dict[str, ScenarioChangeDraft] = field(default_factory=dict, repr=False)
     export_dir: Path | None = None
     submission_packages: dict[str, SubmissionPackageRecord] = field(default_factory=dict)
 
@@ -137,10 +160,13 @@ class RunRecord:
             created_at=self.created_at,
             updated_at=self.updated_at,
             recovery_of_run_id=self.recovery_of_run_id,
+            scenario_change=self.scenario_change,
             schedule=self.schedule,
             validation_report=self.validation_report,
             schedule_diff=self.schedule_diff,
             problem=self.problem,
+            demo=self.demo,
+            demo_notice=self.demo_notice,
             submission_packages=[
                 package.to_summary()
                 for package in sorted(self.submission_packages.values(), key=lambda item: item.manifest.created_at)
@@ -205,6 +231,8 @@ class RunService:
         *,
         recovery_of_run_id: str | None = None,
         scenario_change: ScenarioChange | None = None,
+        demo: bool = False,
+        demo_notice: str | None = None,
     ) -> RunRecord:
         now = utc_now()
         access_token = secrets.token_urlsafe(32)
@@ -219,9 +247,217 @@ class RunService:
             last_accessed_at=now,
             recovery_of_run_id=recovery_of_run_id,
             scenario_change=scenario_change,
+            demo=demo,
+            demo_notice=demo_notice,
             validation_report=ValidationReport.from_domain(self.validator.status()),
         )
         self.store.add(record)
+        return record
+
+    @staticmethod
+    def _fixture_checksums() -> dict[str, str] | None:
+        """Return public input hashes only when the committed fixture is intact."""
+
+        manifest_path = PUBLIC_INSTANCE_DIR / "manifest.json"
+        try:
+            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            files = manifest["files"]
+            expected = {name: files[name] for name in INPUT_TABLES}
+        except (OSError, KeyError, TypeError, json.JSONDecodeError):
+            return None
+        actual: dict[str, str] = {}
+        for name, expected_hash in expected.items():
+            path = PUBLIC_INSTANCE_DIR / name
+            if not path.is_file():
+                return None
+            digest = hashlib.sha256(path.read_bytes()).hexdigest()
+            if digest != expected_hash:
+                return None
+            actual[name] = digest
+        return actual
+
+    def public_fixture_available(self) -> bool:
+        return self._fixture_checksums() is not None and all(
+            (PUBLIC_SUBMISSION_DIR / name).is_file()
+            for name in ("SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "RESULTS.csv")
+        )
+
+    def capability_report(self, *, draft_parser_available: bool) -> CapabilityReport:
+        declared = getattr(self.solver, "supported_scenarios", (Scenario.A,))
+        supported = {Scenario(value) if isinstance(value, str) else value for value in declared}
+        scenarios = [
+            ScenarioCapability(
+                scenario=scenario,
+                available=scenario in supported,
+                code=None if scenario in supported else "scenario_unavailable",
+                message=(
+                    "The active solver supports this scenario."
+                    if scenario in supported
+                    else f"Scenario {scenario.value} is unavailable until its approved solver policy is connected."
+                ),
+            )
+            for scenario in (Scenario.A, Scenario.B, Scenario.C)
+        ]
+        recovery_available = bool(getattr(self.solver, "supports_recovery", False))
+        public_demo = self.public_fixture_available()
+        return CapabilityReport(
+            scenarios=scenarios,
+            recovery=FeatureCapability(
+                available=recovery_available,
+                code=None if recovery_available else "recovery_solver_unavailable",
+                message=(
+                    "The active solver supports confirmed recovery changes."
+                    if recovery_available
+                    else "Recovery optimisation is not connected yet; no revised live schedule can be created."
+                ),
+            ),
+            public_demo_recovery=FeatureCapability(
+                available=public_demo,
+                code=None if public_demo else "public_demo_unavailable",
+                message=(
+                    "A public-fixture demonstration replay is available."
+                    if public_demo
+                    else "The committed public fixture is unavailable or failed its checksum check."
+                ),
+            ),
+            disruption_drafts=FeatureCapability(
+                available=public_demo and draft_parser_available,
+                code=None if public_demo and draft_parser_available else "disruption_parser_unavailable",
+                message=(
+                    "Draft disruption parsing is available for the public fixture only."
+                    if public_demo and draft_parser_available
+                    else "Draft disruption parsing requires the intact public fixture and an enabled Vertex service."
+                ),
+            ),
+        )
+
+    def is_public_demo(self, record: RunRecord) -> bool:
+        return (
+            record.demo
+            and record.input_instance.source.fixture
+            and record.input_instance.source.instance_id == "public-fixture-v1"
+            and self.public_fixture_available()
+        )
+
+    def create_public_demo_run(self) -> RunRecord:
+        checksums = self._fixture_checksums()
+        if checksums is None or not self.public_fixture_available():
+            raise ValueError("The committed public fixture is unavailable or has changed.")
+        bundle = load_instance(PUBLIC_INSTANCE_DIR)
+        instance = InputInstance.from_bundle(
+            bundle,
+            InputSource(
+                instance_id="public-fixture-v1",
+                received_at=utc_now(),
+                fixture=True,
+                file_checksums=checksums,
+            ),
+        )
+        record = self.create_run(instance, Scenario.A, demo=True, demo_notice=DEMO_NOTICE)
+        preparation = prepare_instance(instance.to_bundle())
+        if preparation.prepared is None:
+            self.store.remove(record.run_id)
+            raise ValueError("The committed public fixture failed shared preprocessing validation.")
+        candidate = load_submission(PUBLIC_SUBMISSION_DIR)
+        schedule_id = str(uuid4())
+        report = ValidationReport.from_domain(
+            validate_schedule(preparation.prepared, candidate), schedule_id=schedule_id
+        )
+        if report.hard_violations:
+            self.store.remove(record.run_id)
+            raise ValueError("The public demo schedule failed local preflight and cannot be replayed.")
+        record.prepared_instance = preparation.prepared
+        record.schedule = Schedule.from_domain(
+            candidate,
+            schedule_id=schedule_id,
+            input_instance_id=instance.source.instance_id,
+            generated_at=utc_now(),
+        )
+        # The baseline exposes the fixed demonstration change for review.  It
+        # is never dispatched to a solver in this public-fixture replay.
+        record.scenario_change = self._demo_change(record)
+        record.validation_report = report
+        record.status = RunStatus.SUCCEEDED
+        record.updated_at = utc_now()
+        return record
+
+    @staticmethod
+    def _unchanged_demo_diff(baseline: Schedule, recovered: Schedule) -> ScheduleDiff:
+        changes = [
+            PlacementChange(
+                key={"activity_id": placement.activity_id, "access_seq": placement.access_seq},
+                kind="unchanged",
+                before=placement,
+                after=placement,
+            )
+            for placement in baseline.placements
+        ]
+        return ScheduleDiff(
+            baseline_schedule_id=baseline.schedule_id,
+            recovered_schedule_id=recovered.schedule_id,
+            placement_changes=changes,
+            unchanged_count=len(changes),
+            moved_count=0,
+            score_delta={"demo_replay": 0.0},
+            completion_delta={"overrun_days": 0.0},
+        )
+
+    @staticmethod
+    def _demo_change(record: RunRecord) -> ScenarioChange:
+        assert record.schedule is not None and record.prepared_instance is not None
+        placement = next(item for item in record.schedule.placements if item.occupancies)
+        location_id = placement.occupancies[0].location_id
+        supply = record.prepared_instance.supply.get(location_id, 1)
+        return ScenarioChange(
+            change_id="public-demo-replay",
+            base_schedule_id=record.schedule.schedule_id,
+            scenario=record.scenario,
+            supply_overrides=[
+                {"location_id": location_id, "week": placement.week, "supply_capacity": max(1, supply - 1)}
+            ],
+            locked_placements=[{"activity_id": placement.activity_id, "access_seq": placement.access_seq}],
+            requested_by="public-demo",
+            confirmed_at=utc_now(),
+            rationale="Fixed public-fixture recovery replay.",
+        )
+
+    def create_public_demo_replay(self, base_run_id: str, *, draft_id: str | None = None) -> RunRecord | None:
+        base = self.store.get(base_run_id)
+        if base is None or not self.is_public_demo(base) or base.schedule is None or base.prepared_instance is None:
+            return None
+        if draft_id is not None:
+            draft = base.disruption_drafts.get(draft_id)
+            if draft is None or draft.status is not ScenarioChangeDraftStatus.READY:
+                return None
+            if draft.change.base_schedule_id != base.schedule.schedule_id:
+                return None
+        change = self._demo_change(base)
+        record = self.create_run(
+            base.input_instance,
+            base.scenario,
+            recovery_of_run_id=base.run_id,
+            scenario_change=change,
+            demo=True,
+            demo_notice=DEMO_NOTICE,
+        )
+        schedule_id = str(uuid4())
+        candidate = base.schedule.to_domain()
+        record.prepared_instance = base.prepared_instance
+        record.schedule = Schedule.from_domain(
+            candidate,
+            schedule_id=schedule_id,
+            input_instance_id=base.input_instance.source.instance_id,
+            generated_at=utc_now(),
+        )
+        record.validation_report = ValidationReport.from_domain(
+            validate_schedule(base.prepared_instance, candidate), schedule_id=schedule_id
+        )
+        if record.validation_report.hard_violations:
+            self.store.remove(record.run_id)
+            return None
+        record.schedule_diff = self._unchanged_demo_diff(base.schedule, record.schedule)
+        record.status = RunStatus.SUCCEEDED
+        record.updated_at = utc_now()
         return record
 
     def authorize(self, run_id: str, token: str | None) -> RunRecord | None:
@@ -361,7 +597,7 @@ class RunService:
 
     def get_export(self, run_id: str, filename: str) -> Path | None:
         record = self.store.get(run_id)
-        if record is None or record.status != RunStatus.SUCCEEDED or not record.export_dir:
+        if record is None or record.demo or record.status != RunStatus.SUCCEEDED or not record.export_dir:
             return None
         path = record.export_dir / filename
         return path if path.is_file() else None
@@ -381,6 +617,11 @@ class RunService:
         record = self.store.get(run_id)
         if record is None:
             raise SubmissionPackageError("run_not_found", f"No run exists with id {run_id}.")
+        if record.demo:
+            raise SubmissionPackageError(
+                "demo_submission_unavailable",
+                "Public demonstration runs cannot create submission packages or organiser evidence.",
+            )
         report = record.validation_report
         if (
             record.status != RunStatus.SUCCEEDED
@@ -460,6 +701,11 @@ class RunService:
         self, run_id: str, package_id: str, payload: OrganiserEvidenceInput
     ) -> SubmissionPackageRecord:
         record = self.store.get(run_id)
+        if record is not None and record.demo:
+            raise SubmissionPackageError(
+                "demo_submission_unavailable",
+                "Public demonstration runs cannot record organiser submission evidence.",
+            )
         package = self.get_submission_package(run_id, package_id)
         assert record is not None  # get_submission_package has already checked this.
         if package.organiser_evidence is not None:

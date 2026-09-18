@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { railAccessApi, RailAccessApiError } from "./api/client";
-import type { Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario } from "./api/types";
+import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft } from "./api/types";
 import { TrainScene } from "./TrainScene";
 import { GroundedCopilot } from "./GroundedCopilot";
+import { RecoverySandbox } from "./RecoverySandbox";
 
 type MaintenanceEvent = {
   id: string;
@@ -347,7 +348,7 @@ function SubmissionEvidencePanel({
   const [reference, setReference] = useState("");
   const [digest, setDigest] = useState("");
   const [note, setNote] = useState("");
-  const localClean = run?.status === "succeeded" && run.validation_report?.hard_violations.length === 0;
+  const localClean = !run?.demo && run?.status === "succeeded" && run.validation_report?.hard_violations.length === 0;
   const latestPackage = run?.submission_packages.at(-1);
 
   if (!run) return null;
@@ -364,6 +365,7 @@ function SubmissionEvidencePanel({
           {run.validation_report.message} Organiser feedback recorded here remains unverified until a supported organiser report integration exists.
         </p>
       )}
+      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">Public demonstration runs cannot create submission packages, exports, or organiser evidence.</p>}
       {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
       {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
 
@@ -486,14 +488,14 @@ function CopilotButton() {
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [capabilities, setCapabilities] = useState<CapabilityReport | null>(null);
   const [month, setMonth] = useState(8);
   const [year, setYear] = useState(2026);
   const [activeEvent, setActiveEvent] = useState<MaintenanceEvent | null>(null);
   const [demandFiles, setDemandFiles] = useState<File[]>([]);
-  const [updateFiles, setUpdateFiles] = useState<File[]>([]);
   const [scenario, setScenario] = useState<Scenario>("A");
   const [page, setPage] = useState<PlannerPage>("overview");
-  const [refreshNotice, setRefreshNotice] = useState("Upload a demand book or disruption event, then select a scenario to prepare an optimisation run.");
+  const [refreshNotice, setRefreshNotice] = useState("Upload the eight CSV demand book, then select an available scenario to prepare an optimisation run.");
   const [run, setRun] = useState<RunView | null>(null);
   const [runBusy, setRunBusy] = useState(false);
 
@@ -501,11 +503,14 @@ export default function App() {
     railAccessApi.getHealth()
       .then(setHealth)
       .catch(() => setHealth(null));
+    railAccessApi.getCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
   }, []);
 
   const validatorStatus = health?.validator_status ?? "checking";
   const demandBookReady = demandFiles.length === 8;
-  const scheduleInputReady = demandBookReady || updateFiles.length > 0;
+  const scheduleInputReady = demandBookReady;
   const changeMonth = (direction: number) => {
     const nextDate = new Date(Date.UTC(year, month + direction, 1));
     setMonth(nextDate.getUTCMonth());
@@ -514,11 +519,15 @@ export default function App() {
 
   const startRun = async () => {
     if (!scheduleInputReady || runBusy) return;
+    const scenarioCapability = capabilities?.scenarios.find((item) => item.scenario === scenario);
+    if (!scenarioCapability?.available) {
+      setRefreshNotice(scenarioCapability?.message ?? "Checking the active solver capabilities. Please try again in a moment.");
+      return;
+    }
     setRunBusy(true);
     setRun(null);
-    const runFiles = demandBookReady ? demandFiles : updateFiles;
-    const uploadLabel = demandBookReady ? "eight CSV demand book" : "disruption event";
-    setRefreshNotice(`Uploading the ${uploadLabel} for Scenario ${scenario}.`);
+    const runFiles = demandFiles;
+    setRefreshNotice(`Uploading the eight CSV demand book for Scenario ${scenario}.`);
     try {
       let current = await railAccessApi.createRun(scenario, runFiles);
       setRun(current);
@@ -529,7 +538,6 @@ export default function App() {
       }
       setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
       setDemandFiles([]);
-      setUpdateFiles([]);
       setPage("overview");
     } catch (error) {
       const detail = error instanceof RailAccessApiError ? error.message : "The run could not be started.";
@@ -537,6 +545,36 @@ export default function App() {
     } finally {
       setRunBusy(false);
     }
+  };
+
+  const openPublicDemo = async () => {
+    if (runBusy) return;
+    setRunBusy(true);
+    try {
+      const demo = await railAccessApi.createPublicDemoRun();
+      setRun(demo);
+      setRefreshNotice("Public recovery demonstration loaded. It is unverified and cannot be exported or submitted.");
+      setPage("overview");
+    } catch (error) {
+      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not open the public recovery demonstration.");
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const replayPublicDemo = async (draftId?: string) => {
+    if (!run || runBusy) return;
+    setRunBusy(true);
+    try {
+      setRun(await railAccessApi.createPublicDemoReplay(run.run_id, draftId));
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const createDisruptionDraft = async (text: string): Promise<ScenarioChangeDraft> => {
+    if (!run) throw new Error("Open the public recovery demonstration first.");
+    return railAccessApi.createDisruptionDraft(run.run_id, text);
   };
 
   const createSubmissionPackage = async () => {
@@ -624,6 +662,14 @@ export default function App() {
               onRecordEvidence={recordEvidence}
             />
             <PublicScheduleDownloads />
+            <RecoverySandbox
+              run={run}
+              capabilities={capabilities}
+              busy={runBusy}
+              onOpenDemo={openPublicDemo}
+              onReplay={replayPublicDemo}
+              onCreateDraft={createDisruptionDraft}
+            />
           </>
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
@@ -646,21 +692,12 @@ export default function App() {
               </p>
             </div>
 
-            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Update event</p>
-              <h2 className="section-heading mt-1 text-xl font-bold text-white">Disruption upload</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
-              <div className="mt-4">
-                <UploadDropzone
-                  id="update-event"
-                  title="Updated event CSV"
-                  description="One approved scenario change · CSV only"
-                  files={updateFiles}
-                  multiple={false}
-                  onFiles={setUpdateFiles}
-                />
-              </div>
-              <p className="mt-3 text-xs text-slate-500">Confirmed work will remain locked when the recovery optimiser is connected.</p>
+            <div className="editorial-card rounded-2xl border border-cyan-300/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05 · Recovery</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
+              <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
+              <p className="mt-3 text-xs text-slate-500">{capabilities?.recovery.message ?? "Checking recovery capability…"}</p>
             </div>
 
             <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
@@ -671,8 +708,10 @@ export default function App() {
                 {(["A", "B", "C"] as Scenario[]).map((option) => (
                   <button
                     key={option}
+                    disabled={!capabilities?.scenarios.find((item) => item.scenario === option)?.available || runBusy}
+                    title={capabilities?.scenarios.find((item) => item.scenario === option)?.message}
                     onClick={() => setScenario(option)}
-                    className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
+                    className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                   >
                     {option}
                   </button>
@@ -680,7 +719,7 @@ export default function App() {
               </div>
               <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
               <button
-                disabled={!scheduleInputReady || runBusy}
+                disabled={!scheduleInputReady || runBusy || !capabilities?.scenarios.find((item) => item.scenario === scenario)?.available}
                 onClick={() => void startRun()}
                 className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >

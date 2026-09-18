@@ -17,6 +17,7 @@ from app.api.routes import router as v1_router
 from app.api.run_service import RunService
 from app.api.schemas import ApiError, ApiFieldError
 from app.ai.gemini import CopilotService
+from app.ai.disruption_drafts import DisruptionDraftService
 from app.solver.adapter import CpSatSolverAdapter
 from app.validation.adapter import OfficialValidatorAdapter
 
@@ -24,6 +25,7 @@ app = FastAPI(title="RailAccess AI", version="0.1.0")
 validator = OfficialValidatorAdapter()
 app.state.run_service = RunService(solver=CpSatSolverAdapter(), validator=validator)
 app.state.copilot_service = CopilotService()
+app.state.disruption_draft_service = DisruptionDraftService()
 
 
 @app.middleware("http")

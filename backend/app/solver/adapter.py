@@ -13,6 +13,9 @@ from .policy import UnsupportedScenarioError
 class CpSatSolverAdapter:
     """Implement the existing RunService solver protocol for Scenario A."""
 
+    supported_scenarios = (Scenario.A,)
+    supports_recovery = False
+
     def __init__(self, *, time_limit_seconds: float = 60.0) -> None:
         self.solver = ScenarioASolver(time_limit_seconds=time_limit_seconds)
         self.last_result: SolveResult | None = None

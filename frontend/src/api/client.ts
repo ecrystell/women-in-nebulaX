@@ -1,11 +1,13 @@
 import type {
   ApiErrorResponse,
+  CapabilityReport,
   CopilotMode,
   CopilotResponse,
   EvidenceEnvelope,
   Health,
   OrganiserEvidenceInput,
   RunView,
+  ScenarioChangeDraft,
   Scenario,
   SubmissionPackageSummary
 } from "./types";
@@ -37,6 +39,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const railAccessApi = {
   getHealth: () => request<Health>("/health"),
+  getCapabilities: () => request<CapabilityReport>("/capabilities"),
   getRun: (runId: string) => request<RunView>(`/runs/${runId}`),
   getActivityEvidence: (runId: string, activityId: string) => request<EvidenceEnvelope>(`/runs/${runId}/evidence/activities/${encodeURIComponent(activityId)}`),
   getCapacityHotspots: (runId: string) => request<EvidenceEnvelope>(`/runs/${runId}/evidence/capacity-hotspots`),
@@ -57,6 +60,17 @@ export const railAccessApi = {
     files.forEach((file) => body.append("files", file, file.name));
     return request<RunView>("/runs", { method: "POST", body });
   },
+  createPublicDemoRun: () => request<RunView>("/demo-runs", { method: "POST" }),
+  createPublicDemoReplay: (runId: string, draftId?: string) => request<RunView>(`/runs/${runId}/demo-recovery`, {
+    method: "POST",
+    ...(draftId ? { body: JSON.stringify({ draft_id: draftId }) } : {})
+  }),
+  createDisruptionDraft: (runId: string, text: string) =>
+    request<ScenarioChangeDraft>(`/runs/${runId}/disruption-drafts`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text })
+    }),
   createSubmissionPackage: (runId: string) =>
     request<SubmissionPackageSummary>(`/runs/${runId}/submission-packages`, { method: "POST" }),
   recordOrganiserEvidence: (runId: string, packageId: string, payload: OrganiserEvidenceInput) =>

@@ -186,6 +186,21 @@ process and must be retained outside Git. An organiser-reported outcome remains
 `unverified`; it never sets `feasible=true` without a supported organiser report
 integration. See [`docs/ORGANISER_SUBMISSION_PLAYBOOK.md`](docs/ORGANISER_SUBMISSION_PLAYBOOK.md).
 
+### Public recovery sandbox (fixture-only)
+
+The controller UI can open a public recovery demonstration without uploading
+data. The API verifies the committed public input checksums, then shows the
+published Scenario A schedule beside a fixed, reviewed disruption replay. The
+demo is explicitly **unverified** and is not an optimisation: it cannot export
+CSV files, create a submission package, record organiser evidence, or be used
+with an uploaded/hidden instance.
+
+When Vertex is enabled, the demo also accepts a short controller instruction
+and returns a review-only typed disruption draft. Only recognised public
+location and placement identifiers are retained; unknown or ambiguous values
+remain errors. A ready draft can replay the fixed demo only. Real disruption
+recovery remains unavailable until the locked-work recovery solver is wired in.
+
 ### Scenario A solver (implemented)
 
 Run the deterministic CP-SAT Scenario A solver directly without starting the frontend:

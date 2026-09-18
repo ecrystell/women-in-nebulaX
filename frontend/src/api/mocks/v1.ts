@@ -50,5 +50,7 @@ export const publicFixtureMockRun: RunView = {
     detail: {}
   },
   schedule_diff: { baseline_schedule_id: "mock-public-a-schedule", recovered_schedule_id: "mock-public-a-schedule", placement_changes: [], unchanged_count: 1, moved_count: 0 },
+  demo: true,
+  demo_notice: "Public demonstration fixture \u2014 not a newly optimised schedule.",
   submission_packages: []
 };

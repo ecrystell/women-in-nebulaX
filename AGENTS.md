@@ -301,6 +301,8 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
+| R4.3/R4.5A public recovery sandbox | Complete integration-ready demo | `GET /api/v1/capabilities` exposes the real Scenario A/B/C and recovery boundaries. A separate, checksummed public-fixture demo replays the published Scenario A schedule and a fixed reviewed disruption. It is visibly `demo=true`, locally clean but `unverified`, and cannot export, package, record organiser evidence, or enter the real solver path. |
+| R4.8A public draft parser | Complete integration-ready demo | A bounded, Vertex-backed typed draft endpoint is available only for that public demo. It sends identifiers and controller text only, validates every reference deterministically, stores drafts only in the live run, and permits fixed-demo replay only for a `ready` draft. It cannot invoke solver, validation, export, submission, or real recovery. |
 | Regression and container checks | Complete for Scenario A gate | Pytest covers upload failures, lifecycle states, real Scenario A solving, B/C unavailability, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
 | Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
 
@@ -318,11 +320,12 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** organiser evidence confirms the unresolved closure timing, report/tag, and score semantics, or each remaining ambiguity is explicitly documented as uncheckable from the output CSVs.
 
-#### R4.3 — Extend the run gate beyond Scenario A
+#### R4.3 — Extend the run gate beyond Scenario A (integration readiness complete)
 
 **Dependency:** Person 2's `SolverAdapter` implementation and Person 1's preprocessing output.
 
 - Integrate Person 2's Scenario B and C policies through the same adapter; unsupported scenarios must remain blocked until then.
+- The capability contract, disabled controller actions, and fake-adapter boundary now make that extension explicit without exposing dummy B/C schedules. Production B/C remain `blocked/scenario_unavailable`.
 - Record CP-SAT status and diagnostics in the run evidence; accept only `FEASIBLE` or `OPTIMAL` candidates from the solver.
 - Add bounded solver timeout, safe exception handling, temporary-export cleanup, and explicit expired/restarted-run behaviour.
 - Keep the existing local-preflight gate: hard-invalid candidates are diagnostic-only, never ready submissions.
@@ -341,9 +344,11 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Complete:** R4.4 packages are reproducible within the live process and visibly separate local preflight from user-recorded organiser metadata. Official report parsing and verified status remain organiser-dependent work.
 
-#### R4.5 — Finish recovery integration
+#### R4.5 — Finish real recovery integration (R4.5A demo complete)
 
 **Dependency:** Person 2's locked-work recovery model and `ScheduleDiff` implementation; Person 3's confirmation UI.
+
+**R4.5A complete:** the controller can review a fixed public supply reduction and locks, inspect an unchanged deterministic before/after replay, and see the exact future integration boundary. This is a public demonstration only, not optimisation and not a substitute for a recovery solver.
 
 - Pass only confirmed supply overrides and locked placement keys to the recovery solver.
 - Validate the recovered result with the same preflight and organiser-evidence lifecycle as a baseline run.
@@ -379,9 +384,11 @@ smoke test; no hidden instance is used for deployment validation.
 
 **Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
 
-#### R4.8 — Bonus: typed disruption request parser
+#### R4.8 — Bonus: typed disruption request parser (R4.8A public demo complete)
 
 **Dependency:** R4.5 recovery integration, stable `ScenarioChange` validation, and the grounded-tool safeguards in R4.6.
+
+**R4.8A complete:** public-fixture controller text can become an unconfirmed, schema-checked draft with assumptions, unresolved references, and field errors. It can only confirm the fixed public replay. Extending it to a hidden/live run remains blocked on the real recovery adapter.
 
 - Add an LLM-backed, schema-constrained endpoint that translates a controller's hand-typed disruption request into a **draft** `ScenarioChange` (for example, a reduced location supply, a requested lock, or a stated rationale).
 - Show the parsed fields, assumptions, unresolved references, and validation errors to the controller before any action is available.

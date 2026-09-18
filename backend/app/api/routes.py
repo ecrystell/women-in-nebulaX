@@ -14,18 +14,29 @@ from fastapi.responses import FileResponse
 
 from app.api.errors import ApiException
 from app.ai.gemini import CopilotService, CopilotUnavailable
-from app.api.run_service import EvidenceUnavailable, RunRecord, RunService, SubmissionPackageError
+from app.ai.disruption_drafts import DisruptionDraftService, DisruptionDraftUnavailable
+from app.api.run_service import (
+    PUBLIC_SUBMISSION_DIR,
+    EvidenceUnavailable,
+    RunRecord,
+    RunService,
+    SubmissionPackageError,
+)
 from app.api.schemas import (
     ApiFieldError,
+    CapabilityReport,
     CopilotRequest,
     CopilotResponse,
     CopilotMode,
+    DemoRecoveryRequest,
     EvidenceEnvelope,
     InputInstance,
     InputSource,
     OrganiserEvidenceInput,
     RunView,
     ScenarioChange,
+    ScenarioChangeDraft,
+    ScenarioChangeDraftRequest,
     SubmissionPackageSummary,
 )
 from app.domain.models import Scenario
@@ -36,7 +47,7 @@ ALLOWED_EXPORTS = frozenset({"SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "R
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_PACKAGE_BYTES = 40 * 1024 * 1024
-PUBLIC_SCHEDULE_DIR = Path(__file__).resolve().parents[3] / "data" / "public-instance" / "sample-submission"
+PUBLIC_SCHEDULE_DIR = PUBLIC_SUBMISSION_DIR
 
 
 def get_service(request: Request) -> RunService:
@@ -45,6 +56,10 @@ def get_service(request: Request) -> RunService:
 
 def get_copilot(request: Request) -> CopilotService:
     return request.app.state.copilot_service
+
+
+def get_draft_service(request: Request) -> DisruptionDraftService:
+    return request.app.state.disruption_draft_service
 
 
 def _cookie_name(run_id: str) -> str:
@@ -152,6 +167,26 @@ def health(request: Request) -> dict[str, object]:
         "status": "ok",
         "validator_status": service.validator.status().status.value,
     }
+
+
+@router.get("/capabilities", response_model=CapabilityReport)
+def capabilities(request: Request) -> CapabilityReport:
+    service = get_service(request)
+    return service.capability_report(draft_parser_available=get_draft_service(request).available)
+
+
+@router.post("/demo-runs", response_model=RunView, status_code=201)
+def create_public_demo_run(request: Request, response: Response) -> RunView:
+    service = get_service(request)
+    if not service.capability_report(draft_parser_available=get_draft_service(request).available).public_demo_recovery.available:
+        raise ApiException(409, "public_demo_unavailable", "The committed public demo fixture is unavailable.")
+    try:
+        record = service.create_public_demo_run()
+    except ValueError as error:
+        raise ApiException(409, "public_demo_unavailable", str(error)) from error
+    _set_run_cookie(response, record, service)
+    response.headers.update(NO_STORE_HEADERS)
+    return record.to_view()
 
 
 @router.post("/runs", response_model=RunView, status_code=202)
@@ -326,6 +361,60 @@ def create_copilot_response(request: Request, run_id: str, payload: CopilotReque
         raise ApiException(503, "copilot_unavailable", str(error)) from error
 
 
+@router.post("/runs/{run_id}/disruption-drafts", response_model=ScenarioChangeDraft)
+def create_disruption_draft(
+    request: Request, run_id: str, payload: ScenarioChangeDraftRequest
+) -> ScenarioChangeDraft:
+    record = _authorize(request, run_id)
+    service = get_service(request)
+    draft_service = get_draft_service(request)
+    if not service.is_public_demo(record):
+        raise ApiException(
+            409,
+            "public_demo_only",
+            "Hand-typed disruption drafts are available only for the committed public demonstration fixture.",
+        )
+    if not draft_service.available:
+        raise ApiException(503, "disruption_parser_unavailable", "The draft parser is not enabled for this service.")
+    if not service.consume_copilot_request(record):
+        raise ApiException(503, "disruption_parser_unavailable", "Try the draft parser again in a minute.")
+    try:
+        draft = draft_service.create(record, payload.text)
+        record.disruption_drafts[draft.draft_id] = draft
+        return draft
+    except DisruptionDraftUnavailable as error:
+        raise ApiException(503, "disruption_parser_unavailable", str(error)) from error
+
+
+@router.post("/runs/{run_id}/demo-recovery", response_model=RunView, status_code=201)
+def create_public_demo_replay(
+    request: Request,
+    run_id: str,
+    response: Response,
+    payload: DemoRecoveryRequest | None = None,
+) -> RunView:
+    service = get_service(request)
+    base = _authorize(request, run_id)
+    if not service.is_public_demo(base):
+        raise ApiException(
+            409,
+            "public_demo_only",
+            "Recovery replay is available only for the committed public demonstration fixture.",
+        )
+    record = service.create_public_demo_replay(run_id, draft_id=payload.draft_id if payload else None)
+    if record is None:
+        if payload and payload.draft_id:
+            raise ApiException(
+                422,
+                "disruption_draft_not_ready",
+                "A known, fully resolved public draft is required before this replay can be confirmed.",
+            )
+        raise ApiException(409, "public_demo_unavailable", "The public recovery replay could not be created.")
+    _set_run_cookie(response, record, service)
+    response.headers.update(NO_STORE_HEADERS)
+    return record.to_view()
+
+
 @router.post("/runs/{run_id}/recovery", response_model=RunView, status_code=202)
 def create_recovery(
     request: Request,
@@ -342,7 +431,14 @@ def create_recovery(
             [ApiFieldError(field="confirmed_at", message="confirmation is required")],
         )
     service = get_service(request)
-    base = _authorize(request, run_id).to_view()
+    base_record = _authorize(request, run_id)
+    if not service.capability_report(draft_parser_available=get_draft_service(request).available).recovery.available:
+        raise ApiException(
+            409,
+            "recovery_solver_unavailable",
+            "Recovery optimisation is not connected yet; no revised live schedule can be created.",
+        )
+    base = base_record.to_view()
     if base.status.value != "succeeded" or base.schedule is None:
         raise ApiException(
             409,

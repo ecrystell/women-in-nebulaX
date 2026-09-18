@@ -206,6 +206,45 @@ type ScheduleDiff = {
 
 A recovery cannot remove workload: each activity's delivered yield must still meet `total_accesses` in both schedules. ECLO can legitimately change the number of access sequences, so an access sequence may be `added` or `removed` in the diff. A changed co-share group or occupancy footprint counts as a moved placement even when week and access night stay the same.
 
+### Capability and public-demo boundary
+
+`GET /api/v1/capabilities` is the controller's source of truth for which
+workflow may be started. Each Scenario A/B/C entry and the `recovery`,
+`public_demo_recovery`, and `disruption_drafts` features expose `available`, a
+stable unavailable `code`, and a human-readable `message`.
+
+The public demonstration is deliberately separate from an uploaded instance:
+
+- it is created only from the repository-owned, checksum-verified public
+  fixture and has `RunView.demo=true` plus a visible notice;
+- it replays a fixed reviewed change and never represents a new optimisation;
+- it cannot export, package, record organiser evidence, or become feasible;
+- an ordinary upload is never eligible for this route, even when its bytes
+  happen to match the public input files.
+
+### `ScenarioChangeDraft`
+
+A review-only interpretation of bounded controller text:
+
+```ts
+type ScenarioChangeDraft = {
+  draft_id: string;
+  change: Omit<ScenarioChange, "confirmed_at"> & { confirmed_at: null };
+  assumptions: string[];
+  unresolved_references: string[];
+  field_errors: Array<{ field: string; message: string }>;
+  evidence_version: "1";
+  status: "ready" | "needs_review";
+};
+```
+
+R4.8A restricts this endpoint to the public demo and passes the model only the
+controller text plus bounded public location and placement identifiers. Server
+code validates every generated reference before retaining the draft. A draft
+cannot run any solver, validator, exporter, submission action, or real
+recovery. A `ready` draft may only trigger the fixed public replay; extending
+that confirmation path to a live recovery waits for the locked-work solver.
+
 ## Official CSV and export mapping
 
 | Canonical area | Official source/output | Contract rule |

@@ -62,6 +62,42 @@ export type ScheduleDiff = {
   }>;
   unchanged_count: number;
   moved_count: number;
+  score_delta?: Record<string, number>;
+  completion_delta?: Record<string, number>;
+};
+
+export type FeatureCapability = {
+  available: boolean;
+  code?: string | null;
+  message: string;
+};
+
+export type CapabilityReport = {
+  scenarios: Array<FeatureCapability & { scenario: Scenario }>;
+  recovery: FeatureCapability;
+  public_demo_recovery: FeatureCapability;
+  disruption_drafts: FeatureCapability;
+};
+
+export type ScenarioChange = {
+  change_id: string;
+  base_schedule_id: string;
+  scenario: Scenario;
+  supply_overrides: Array<{ location_id: string; week: number; supply_capacity: number }>;
+  locked_placements: PlacementKey[];
+  requested_by: string;
+  confirmed_at?: string | null;
+  rationale?: string;
+};
+
+export type ScenarioChangeDraft = {
+  draft_id: string;
+  change: ScenarioChange;
+  assumptions: string[];
+  unresolved_references: string[];
+  field_errors: Array<{ field: string; message: string }>;
+  evidence_version: "1";
+  status: "ready" | "needs_review";
 };
 
 export type OrganiserEvidenceInput = {
@@ -92,11 +128,14 @@ export type RunView = {
   input_instance: { instance_id: string; fixture: boolean; row_counts: Record<string, number> };
   created_at: string;
   updated_at: string;
-  recovery_of_run_id?: string;
+  recovery_of_run_id?: string | null;
+  scenario_change?: ScenarioChange | null;
   schedule?: Schedule;
   validation_report?: ValidationReport;
   schedule_diff?: ScheduleDiff;
   problem?: { code: string; message: string };
+  demo: boolean;
+  demo_notice?: string | null;
   submission_packages: SubmissionPackageSummary[];
 };
 

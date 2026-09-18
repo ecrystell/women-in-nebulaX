@@ -294,6 +294,40 @@ class ScenarioChange(ApiModel):
     rationale: str | None = None
 
 
+class ApiFieldError(ApiModel):
+    field: str
+    message: str
+
+
+class ScenarioChangeDraftRequest(ApiModel):
+    """Bounded controller prose for the public-fixture draft parser."""
+
+    text: str = Field(min_length=1, max_length=1_000)
+
+
+class ScenarioChangeDraftStatus(str, Enum):
+    READY = "ready"
+    NEEDS_REVIEW = "needs_review"
+
+
+class ScenarioChangeDraft(ApiModel):
+    """A review-only interpretation; it is never a confirmed change."""
+
+    draft_id: str
+    change: ScenarioChange
+    assumptions: list[str] = Field(default_factory=list, max_length=20)
+    unresolved_references: list[str] = Field(default_factory=list, max_length=20)
+    field_errors: list[ApiFieldError] = Field(default_factory=list)
+    evidence_version: Literal["1"] = "1"
+    status: ScenarioChangeDraftStatus
+
+
+class DemoRecoveryRequest(ApiModel):
+    """Optionally tie a fixed public replay to a reviewed draft."""
+
+    draft_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+
 class PlacementChange(ApiModel):
     key: PlacementKey
     kind: Literal["unchanged", "moved", "added", "removed"]
@@ -320,6 +354,23 @@ class RunStatus(str, Enum):
     SUCCEEDED = "succeeded"
     FAILED = "failed"
     BLOCKED = "blocked"
+
+
+class FeatureCapability(ApiModel):
+    available: bool
+    code: str | None = None
+    message: str
+
+
+class ScenarioCapability(FeatureCapability):
+    scenario: Scenario
+
+
+class CapabilityReport(ApiModel):
+    scenarios: list[ScenarioCapability] = Field(min_length=3, max_length=3)
+    recovery: FeatureCapability
+    public_demo_recovery: FeatureCapability
+    disruption_drafts: FeatureCapability
 
 
 class EvidenceKind(str, Enum):
@@ -486,16 +537,14 @@ class RunView(ApiModel):
     created_at: datetime
     updated_at: datetime
     recovery_of_run_id: str | None = None
+    scenario_change: ScenarioChange | None = None
     schedule: Schedule | None = None
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
     problem: RunProblem | None = None
+    demo: bool = False
+    demo_notice: str | None = None
     submission_packages: list[SubmissionPackageSummary] = Field(default_factory=list)
-
-
-class ApiFieldError(ApiModel):
-    field: str
-    message: str
 
 
 class ApiError(ApiModel):
