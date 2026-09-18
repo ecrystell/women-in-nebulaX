@@ -6,6 +6,24 @@ Build a hosted decision-support tool for NEBULA X 2026 Problem Statement 1, Rail
 
 The official source of truth is [`PS1_README.md`](PS1_README.md). Do not replace its rules with generic maintenance-scheduling assumptions. The reference validator's result is the final authority for competition feasibility and scoring; our own validator is the fast, deterministic development and user-facing preflight validator.
 
+## Current implementation workstream
+
+The active coding task is **Scenario A only**: implement the shared, extensible CP-SAT scheduling model, with Scenario A's strict nominal supply, no-ECLO policy, complete workload, physical/safety/possession/allocation constraints, and priority-weighted planned-completion overrun objective. Scenario B and C policy behaviour must not be implemented yet, but the model must expose a central scenario-policy extension point so they can be added without duplicating the model.
+
+The solver must use the existing domain/ingestion/export/preflight contracts, read the planning horizon from `06_PARAMETERS.csv`, generate deterministic three-file Scenario A output, and integrate with the existing backend adapter boundary. The organiser validator is not present as a runnable package in this repository; local preflight results remain unverified until that validator is run.
+
+### Implementation progress
+
+- Added `backend/app/solver/` with a central Scenario A policy, topology/footprint preprocessing, CP-SAT model, independent score helper, API adapter, and CLI.
+- The shared model allocates complete standard-night workload, enforces planned starts, predecessor finish-to-start ordering, weekly allocation/workfront caps, legal PM/PC/C possession groups, strict nominal supply, and Scenario A's no-ECLO policy.
+- Internal closure slots cover buffer, Live opposite-bound, and Live H01–H02 cross-line footprints while retaining the published output distinction between base occupancy rows and hidden closure state.
+- Latest generated public run completed with `OPTIMAL` CP-SAT status, 54 activities, 192 access rows, 928 occupancy rows, 14 contract results, weighted score `32.2`, and zero local preflight hard violations. This is not organiser-validator success.
+- Generated outputs are written to `sample_submission/scenario_a/`; organiser reference fixtures remain under `data/public-instance/sample-submission/`.
+- The production FastAPI app now uses the solver adapter; the existing generic `RunService()` default remains injectable for tests and non-solver callers.
+- Solver, ingestion, export, preflight, and API tests pass in the disposable environment. The full suite has one unrelated public-fixture checksum failure because the current files under `data/public-instance/` do not match their checked-in `manifest.json` hashes; no fixture files were changed.
+- Cross-group buffer ordering remains a documented authority limitation because the published output has no global night identifier. The solver uses internal closure slots and local preflight still reports the schedule as unverified until the organiser validator runs.
+- Scenario B/C, ECLO selection, recovery locks, and LLM behaviour remain intentionally unimplemented for this workstream.
+
 ## Official contract
 
 - Import the eight instance CSVs: `01_LINES`, `02_STATIONS`, `03_SECTORS`, `04_LOCATION_SUPPLY`, `05_BUFFER_LOCATION`, `06_PARAMETERS`, `07_PROJECT_DETAILS`, and `08_ACTIVITY_DETAILS`.
