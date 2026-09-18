@@ -1,0 +1,10 @@
+[project]
+name = "railaccess-ai"
+version = "0.1.0"
+description = "Validator-first railway track access decision support"
+requires-python = ">=3.12"
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]
+addopts = "-q"

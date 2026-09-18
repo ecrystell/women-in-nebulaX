@@ -1,0 +1,20 @@
+{
+  "source_repository": "https://github.com/aochinwen/NebulaX-Hackathon-ProblemStatement",
+  "source_revision": "main",
+  "source_path": "PS1",
+  "retrieved_on": "2026-09-18",
+  "purpose": "Public PS1 schema and export-contract regression fixtures only; not proof of schedule feasibility.",
+  "files": {
+    "01_LINES.csv": "b6e60b0e7726e4266efd059bf5061b3b3a2c9825ae7dd85a6431f41b81b383e7",
+    "02_STATIONS.csv": "4a27d6508defd03e8c833133b523390ac8850a1c1717f309033e40f364720e24",
+    "03_SECTORS.csv": "643fdb2bd317126b42572fafcce8f8108008e8e9c7b71c08dfd31cec11c3ee34",
+    "04_LOCATION_SUPPLY.csv": "9d8a92d6ffd340f40dae28302ed6f88958f8661e2b046bb6b4e0b79c385be1e6",
+    "05_BUFFER_LOCATION.csv": "4b9fe7fd6a1f9128bd6e83405496dc64a8028f997bb1fcd28355582a6d554de0",
+    "06_PARAMETERS.csv": "9400b7b082069c56b8cae85d56994cf06fe08ae54fcd116ff6edc890034cc8e6",
+    "07_PROJECT_DETAILS.csv": "393f0dcc7e7b9a54f0eff12eb0dd0122dbd74f4b4b8b73b7676f9f232fb8a4c7",
+    "08_ACTIVITY_DETAILS.csv": "6a1ef90cd3bed93a8970ef49454e9c02e0c1df93ce8e0f0f4b071563cfb43e30",
+    "sample-submission/RESULTS.csv": "b815b93c64cd429c1cd000da71e364f3bd5198356ad88b2abaf58d00ffa422cc",
+    "sample-submission/SCHEDULE_ACCESS.csv": "fef1f07f28819804c82c8051d282fc332bb1094f24d5ebeb799c23bcbf22c843",
+    "sample-submission/SCHEDULE_OCCUPANCY.csv": "efd33d33573d722db3f87e8d2bbc9af6fe7b6deaab504e8d97f2d7ac58116cf3"
+  }
+}

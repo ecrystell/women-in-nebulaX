@@ -131,6 +131,18 @@ Every response is grounded in structured solver output. Gemini cannot directly a
 
 The MVP keeps inputs in the browser session or container workspace for the run. We will not persist organiser data unless needed and authorised. Cloud Run is used for hosting—not for unnecessary GPU or distributed-compute complexity.
 
+## Phase 0 foundation
+
+The initial foundation provides typed CSV and submission contracts, public schema fixtures, a minimal control-room shell, and a single Python 3.12 production container. It deliberately does **not** claim schedule feasibility: the organiser validator has not been supplied in a runnable form.
+
+```powershell
+docker compose up --build
+```
+
+Open `http://localhost:8080` and call `http://localhost:8080/api/health` to confirm the service. The status endpoint reports `unverified` until the organiser validator is integrated. Public fixture provenance is in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md); the requested validator package details are in [`docs/VALIDATOR_REQUEST.md`](docs/VALIDATOR_REQUEST.md).
+
+To run the backend tests outside Docker, use Python 3.12 and install the exact packages in `requirements.txt`; build the frontend with `npm ci` followed by `npm run build` from `frontend/`.
+
 ## Required exports
 
 For **each** Scenario A, B and C, the tool generates:
