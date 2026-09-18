@@ -86,6 +86,11 @@ class VertexGeminiGenerator:
                     temperature=0.2,
                     max_output_tokens=600,
                     response_mime_type="application/json",
+                    # Ask Vertex to enforce the bounded response shape before
+                    # it reaches our second, independent Pydantic check.  A
+                    # MIME type alone requests JSON but does not guarantee the
+                    # two fields required by this evidence-only endpoint.
+                    response_schema=_Narrative,
                 ),
             )
             return response.text or ""
