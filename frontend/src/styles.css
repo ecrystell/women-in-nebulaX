@@ -1,23 +1,22 @@
 @import "tailwindcss";
 
 :root {
-  color-scheme: light;
+  color-scheme: dark;
   font-family: Aptos, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
-  background: #f7f5ee;
+  background: #07111f;
 }
 
 body {
   margin: 0;
   min-width: 320px;
-  background: #f7f5ee;
+  background: #07111f;
 }
 
 .rail-editorial {
   background:
-    radial-gradient(ellipse at 16% 2%, rgb(255 255 255 / 86%), transparent 23rem),
-    radial-gradient(ellipse at 88% 11%, rgb(240 215 165 / 43%), transparent 25rem),
-    radial-gradient(ellipse at 58% 19%, rgb(209 225 230 / 85%), transparent 27rem),
-    linear-gradient(180deg, #9eafb8 0%, #c9d6d7 21rem, #edf0e8 35rem, #f7f5ee 100%);
+    radial-gradient(circle at 74% 16%, rgb(30 64 175 / 27%), transparent 25rem),
+    radial-gradient(circle at 18% 82%, rgb(8 145 178 / 17%), transparent 28rem),
+    linear-gradient(160deg, #020617 0%, #08152d 55%, #020617 100%);
 }
 
 .editorial-hero {
@@ -48,45 +47,45 @@ body {
 }
 
 .editorial-card {
-  border-color: #e5e1d5 !important;
+  border-color: rgb(71 85 105 / 85%) !important;
   border-radius: 1.5rem;
-  background: rgb(255 255 255 / 92%) !important;
-  box-shadow: 0 1.15rem 2.75rem rgb(59 50 35 / 10%);
+  background: rgb(2 12 29 / 90%) !important;
+  box-shadow: 0 1.15rem 2.75rem rgb(2 6 23 / 44%);
 }
 
 .editorial-card .text-white {
-  color: #202838 !important;
+  color: #f8fafc !important;
 }
 
 .editorial-card .text-slate-400,
 .editorial-card .text-slate-300 {
-  color: #687185 !important;
+  color: #cbd5e1 !important;
 }
 
 .editorial-card .border-slate-700,
 .editorial-card .border-slate-700\/80 {
-  border-color: #e5e1d5 !important;
+  border-color: rgb(71 85 105 / 85%) !important;
 }
 
 .editorial-card label {
-  border-color: #d8d2c1 !important;
-  background: #fbfaf6 !important;
+  border-color: rgb(100 116 139 / 90%) !important;
+  background: rgb(15 23 42 / 78%) !important;
 }
 
 .editorial-card .calendar-arrow {
-  border-color: #ded7c7;
-  background: #fffefa;
-  color: #3155cf;
+  border-color: rgb(71 85 105);
+  background: rgb(15 23 42 / 82%);
+  color: rgb(186 230 253);
 }
 
 .editorial-card .calendar-arrow:hover {
-  border-color: #3155cf;
-  background: #f1f4ff;
+  border-color: rgb(34 211 238);
+  background: rgb(8 47 73 / 82%);
 }
 
 .editorial-card .calendar-day,
 .editorial-card .calendar-event-date {
-  color: #465166;
+  color: rgb(203 213 225);
 }
 
 .twinkle-star {
