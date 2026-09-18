@@ -1,9 +1,6 @@
 import { useEffect, useState } from "react";
-
-type Health = {
-  status: string;
-  validator_status: string;
-};
+import { railAccessApi } from "./api/client";
+import type { Health, ValidationStatus } from "./api/types";
 
 const capabilities = [
   ["Input intake", "Eight official CSVs", "Phase 1"],
@@ -14,15 +11,22 @@ const capabilities = [
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [apiError, setApiError] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((response) => response.json() as Promise<Health>)
-      .then(setHealth)
-      .catch(() => setHealth(null));
+    railAccessApi
+      .getHealth()
+      .then((result) => {
+        setHealth(result);
+        setApiError(null);
+      })
+      .catch((error: Error) => {
+        setHealth(null);
+        setApiError(error.message);
+      });
   }, []);
 
-  const validatorStatus = health?.validator_status ?? "checking";
+  const validatorStatus: ValidationStatus | "checking" = health?.validator_status ?? "checking";
 
   return (
     <main className="min-h-screen bg-[#07111f] px-6 py-8 text-slate-100 sm:px-10">
@@ -39,9 +43,10 @@ export default function App() {
               The foundation is online. RailAccess will import the official demand book, create a possession schedule, and present its evidence to the organiser validator.
             </p>
             <div className="mt-8 flex flex-wrap gap-3">
-              <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200">API {health?.status ?? "connecting"}</span>
+              <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-200">API {health?.api_version ?? "connecting"}</span>
               <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-4 py-2 text-sm font-semibold text-amber-100">Validator: {validatorStatus}</span>
             </div>
+            {apiError && <p className="mt-4 text-sm text-rose-300">Integration API unavailable: {apiError}</p>}
           </div>
           <aside className="rounded-2xl border border-slate-700 bg-slate-900/70 p-6 shadow-2xl shadow-cyan-950/30">
             <p className="text-sm font-semibold text-cyan-200">Trust boundary</p>

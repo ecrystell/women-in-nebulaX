@@ -1,1 +1,1 @@
-"""Boundary for the organiser's authoritative validator."""
+"""Boundary for the organiser's authoritative validator and local preflight."""

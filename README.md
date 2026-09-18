@@ -139,9 +139,21 @@ The initial foundation provides typed CSV and submission contracts, public schem
 docker compose up --build
 ```
 
-Open `http://localhost:8080` and call `http://localhost:8080/api/health` to confirm the service. The status endpoint reports `unverified` until the organiser validator is integrated. Public fixture provenance is in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md); the requested validator package details are in [`docs/VALIDATOR_REQUEST.md`](docs/VALIDATOR_REQUEST.md).
+Open `http://localhost:8080` and call `http://localhost:8080/api/v1/health` to confirm the versioned integration API. The validator status remains `unavailable` or `unverified` until the organiser validator is integrated. Public fixture provenance is in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md); the requested validator package details are in [`docs/VALIDATOR_REQUEST.md`](docs/VALIDATOR_REQUEST.md). Team contract and rule-review materials are in [`docs/data-contract.md`](docs/data-contract.md), [`docs/rule-matrix.md`](docs/rule-matrix.md), and [`docs/decision-log.md`](docs/decision-log.md).
 
 To run the backend tests outside Docker, use Python 3.12 and install the exact packages in `requirements.txt`; build the frontend with `npm ci` followed by `npm run build` from `frontend/`.
+
+### Local preflight before an organiser upload
+
+Run the deterministic local checks against an input package and the three files you intend to upload:
+
+```powershell
+docker compose run --rm app python -m app.validation.preflight `
+  --instance data/public-instance `
+  --submission path/to/submission
+```
+
+Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. It expands buffer/Live/interchange footprints, but cannot prove the ordering of distinct possession groups from the published output schema; use the organiser website for that final closure decision and every feasibility claim.
 
 ## Required exports
 
