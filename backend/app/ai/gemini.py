@@ -28,7 +28,11 @@ class _Narrative(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     answer: str = Field(min_length=1, max_length=2000)
-    schedule_id: str
+    # The API attaches the exact server-built EvidenceEnvelope to every
+    # response, so a provider does not need to echo an opaque UUID merely to
+    # establish grounding.  It remains accepted and checked when present for
+    # backwards compatibility with earlier deployed prompts.
+    schedule_id: str | None = None
 
 
 class NarrativeGenerator(Protocol):
@@ -59,8 +63,8 @@ class VertexGeminiGenerator:
             "You are RailAccess Copilot. Explain only the supplied deterministic evidence. "
             "Do not add facts, recommend placements, schedule work, modify a plan, call tools, "
             "claim a plan is feasible, safe, approved, or organiser-verified. "
-            "State uncertainty plainly. Return JSON only with keys answer and schedule_id. "
-            "schedule_id must exactly equal the supplied evidence schedule_id."
+            "State uncertainty plainly. Return JSON only with the key answer. "
+            "The server, not you, attaches the evidence reference."
         )
         contents = json.dumps(
             {"mode": mode.value, "evidence": evidence.model_dump(mode="json")},
@@ -93,6 +97,18 @@ class VertexGeminiGenerator:
                     response_schema=_Narrative,
                 ),
             )
+            # ``parsed`` is the SDK's schema-aware representation. Prefer it
+            # over ``text``: depending on the provider revision, text can be
+            # fenced or omitted even though Vertex successfully parsed the
+            # response against ``response_schema``. The service below still
+            # independently validates this JSON before returning it.
+            parsed = getattr(response, "parsed", None)
+            if isinstance(parsed, BaseModel):
+                return parsed.model_dump_json()
+            if isinstance(parsed, dict):
+                return json.dumps(parsed, separators=(",", ":"))
+            if isinstance(parsed, str):
+                return parsed
             return response.text or ""
         except Exception as error:  # Deliberately do not expose provider payloads or prompt data.
             raise CopilotUnavailable("Vertex AI could not produce a grounded response.") from error
@@ -109,7 +125,10 @@ class CopilotService:
             raise
         except Exception as error:
             raise CopilotUnavailable("Vertex AI returned an invalid grounded response.") from error
-        if decoded.schedule_id != evidence.schedule_id or _contains_prohibited_claim(decoded.answer):
+        if (
+            (decoded.schedule_id is not None and decoded.schedule_id != evidence.schedule_id)
+            or _contains_prohibited_claim(decoded.answer)
+        ):
             raise CopilotUnavailable("Vertex AI returned a response outside the grounded copilot policy.")
         return CopilotResponse(
             mode=mode,

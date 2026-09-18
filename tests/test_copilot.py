@@ -48,6 +48,12 @@ class FencedGenerator(CapturingGenerator):
         return f"```json\n{super().generate(evidence, mode)}\n```"
 
 
+class AnswerOnlyGenerator(CapturingGenerator):
+    def generate(self, evidence, mode) -> str:
+        self.payloads.append(evidence.model_dump(mode="json"))
+        return json.dumps({"answer": self.answer})
+
+
 def set_services(generator: CapturingGenerator | None = None) -> tuple[RunService, CapturingGenerator]:
     previous = getattr(app.state, "run_service", None)
     if previous:
@@ -126,6 +132,18 @@ def test_copilot_accepts_a_fenced_json_provider_response() -> None:
 
     assert response.status_code == 200
     assert response.json()["mode"] == "handover_summary"
+
+
+def test_copilot_binds_an_answer_only_provider_response_to_server_evidence() -> None:
+    _, _ = set_services(AnswerOnlyGenerator())
+    client = TestClient(app)
+    run_id = create_run(client)
+
+    response = client.post(f"/api/v1/runs/{run_id}/copilot-responses", json={"mode": "capacity_hotspots"})
+
+    assert response.status_code == 200
+    assert response.json()["evidence"]["run_id"] == run_id
+    assert response.json()["evidence"]["schedule_id"]
 
 
 def test_copilot_route_requires_schedule_cookie_and_expires(monkeypatch) -> None:

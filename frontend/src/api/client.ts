@@ -45,7 +45,11 @@ export const railAccessApi = {
     request<CopilotResponse>(`/runs/${runId}/copilot-responses`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, activity_id: activityId })
+      // The API deliberately accepts an activity only for an explanation.
+      // Do not leak a stale selector value into hotspot or handover requests.
+      body: JSON.stringify(
+        mode === "activity_explanation" ? { mode, activity_id: activityId } : { mode }
+      )
     }),
   createRun: (scenario: Scenario, files: File[]) => {
     const body = new FormData();
