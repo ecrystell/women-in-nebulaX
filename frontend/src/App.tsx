@@ -77,6 +77,9 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
   const alphaStations = ["S01", "S02", "S03", "S04", "S05", "S06", "S07", "S08"];
   const betaStations = ["S11", "S12", "S13", "S14", "S15", "S16", "S17", "S18"];
   const stationPositions = [350, 420, 490, 560, 730, 800, 870, 920];
+  const interchangeStations = ["H01", "H02"];
+  const alphaActive = activeStation !== null && (alphaStations.includes(activeStation) || interchangeStations.includes(activeStation));
+  const betaActive = activeStation !== null && (betaStations.includes(activeStation) || interchangeStations.includes(activeStation));
 
   const stationNode = (name: string, x: number, y: number, colour: string) => {
     const active = name === activeStation;
@@ -123,14 +126,16 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
         <rect x="10" y="96" width="60" height="28" rx="6" fill="#df5750" />
         <text x="40" y="115" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">ALP</text>
         <text x="82" y="115" fill="#f8b4b1" fontSize="14" fontWeight="700">Metro Line Alpha · Red line</text>
-        <line x1="330" y1="118" x2="940" y2="118" stroke="#e45850" strokeWidth="5" strokeLinecap="round" opacity="0.8" />
+        {alphaActive && <line x1="330" y1="118" x2="940" y2="118" stroke="#fb7185" strokeWidth="16" strokeLinecap="round" opacity="0.22" />}
+        <line x1="330" y1="118" x2="940" y2="118" stroke={alphaActive ? "#fb7185" : "#e45850"} strokeWidth={alphaActive ? "7" : "5"} strokeLinecap="round" opacity={alphaActive ? "1" : "0.8"} />
         {alphaStations.map((station, index) => stationNode(station, stationPositions[index], 118, "#e45850"))}
         {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 118))}
 
         <rect x="10" y="238" width="60" height="28" rx="6" fill="#5fc486" />
         <text x="40" y="257" textAnchor="middle" fill="#ffffff" fontSize="14" fontWeight="800">BET</text>
         <text x="82" y="257" fill="#b7efca" fontSize="14" fontWeight="700">Metro Line Beta · Green line</text>
-        <line x1="330" y1="260" x2="940" y2="260" stroke="#63c38a" strokeWidth="5" strokeLinecap="round" opacity="0.8" />
+        {betaActive && <line x1="330" y1="260" x2="940" y2="260" stroke="#6ee7a0" strokeWidth="16" strokeLinecap="round" opacity="0.22" />}
+        <line x1="330" y1="260" x2="940" y2="260" stroke={betaActive ? "#6ee7a0" : "#63c38a"} strokeWidth={betaActive ? "7" : "5"} strokeLinecap="round" opacity={betaActive ? "1" : "0.8"} />
         {betaStations.map((station, index) => stationNode(station, stationPositions[index], 260, "#63c38a"))}
         {["H01", "H02"].map((station, index) => interchangeNode(station, index === 0 ? 610 : 670, 260, true))}
       </svg>
@@ -199,7 +204,6 @@ function Calendar({
                 onBlur={() => onEventHover(null)}
               >
                 <span className="font-bold">{day}</span>
-                <span className="calendar-event-status">Maintenance</span>
               </button>
             ) : (
               <div key={day} className="calendar-day"><span>{day}</span></div>

@@ -74,13 +74,6 @@ body {
   box-shadow: 0 0 1.25rem rgb(103 232 249 / 52%);
 }
 
-.calendar-event-status {
-  font-size: 0.58rem;
-  font-weight: 800;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
 @keyframes twinkle {
   0%,
   100% {
