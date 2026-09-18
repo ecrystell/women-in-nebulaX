@@ -522,7 +522,7 @@ export default function App() {
   };
 
   return (
-    <main className="rail-editorial relative min-h-screen overflow-hidden px-4 py-6 text-slate-100 sm:px-8 sm:py-8">
+    <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-35">
         <TrainScene />
       </div>
@@ -532,18 +532,18 @@ export default function App() {
         ))}
       </div>
 
-      <section className="relative z-10 mx-auto max-w-7xl pb-28">
-        <header className="editorial-hero flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+      <section className="relative z-10 mx-auto max-w-7xl pb-20">
+        <header className="planner-toolbar flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="editorial-title text-3xl font-black tracking-tight text-white sm:text-5xl">MAINTENANCE SCHEDULE PLANNER</h1>
+            <h1 className="editorial-title text-xl font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
           </div>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 font-semibold text-cyan-200">API {health?.status ?? "connecting"}</span>
-            <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 font-semibold text-amber-100">Validator: {validatorStatus}</span>
+          <div className="flex flex-wrap gap-2 text-xs">
+            <span className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 font-semibold text-cyan-200">API {health?.status ?? "connecting"}</span>
+            <span className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 font-semibold text-cyan-200">Validator: {validatorStatus}</span>
           </div>
         </header>
 
-        <div className="mt-7 grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
+        <div className="mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
           <TrackDiagram activeStation={activeEvent?.station ?? null} />
           <Calendar
             month={month}
@@ -555,7 +555,7 @@ export default function App() {
           />
         </div>
 
-        <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr_0.8fr]">
+        <section className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]">
           <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
             <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">03 · Build schedule</p>
             <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>

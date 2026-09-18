@@ -19,38 +19,31 @@ body {
     linear-gradient(160deg, #020617 0%, #08152d 55%, #020617 100%);
 }
 
-.editorial-hero {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgb(255 255 255 / 35%);
-  border-radius: 2rem;
-  padding: clamp(1.5rem, 4vw, 3.25rem);
-  background:
-    radial-gradient(circle at 82% 12%, rgb(34 211 238 / 20%), transparent 20rem),
-    linear-gradient(125deg, rgb(9 17 31 / 94%), rgb(20 34 54 / 86%));
-  box-shadow: 0 1.8rem 4rem rgb(31 41 55 / 18%);
-}
-
-.editorial-title em {
-  font-family: Georgia, "Times New Roman", serif;
-  font-weight: 400;
+.planner-toolbar {
+  min-height: 3.75rem;
+  border-bottom: 1px solid rgb(34 211 238 / 32%);
+  padding: 0.35rem 0 0.8rem;
+  background: transparent;
 }
 
 .editorial-title,
 .editorial-card h2 {
-  font-family: "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
-  letter-spacing: -0.035em;
+  font-family: Aptos, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
 }
 
 .editorial-card h2 {
+  font-size: 1rem;
   font-weight: 700;
+  line-height: 1.25;
 }
 
 .editorial-card {
   border-color: rgb(71 85 105 / 85%) !important;
-  border-radius: 1.5rem;
-  background: rgb(2 12 29 / 90%) !important;
-  box-shadow: 0 1.15rem 2.75rem rgb(2 6 23 / 44%);
+  border-radius: 0.85rem;
+  padding: 1rem !important;
+  background: rgb(2 12 29 / 93%) !important;
+  box-shadow: 0 0.75rem 1.8rem rgb(2 6 23 / 34%);
 }
 
 .editorial-card .text-white {
