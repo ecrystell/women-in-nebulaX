@@ -166,9 +166,11 @@ function Calendar({
   onYearChange: (direction: number) => void;
   onEventHover: (event: MaintenanceEvent | null) => void;
 }) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const cells = Array.from({ length: firstWeekday + daysInMonth }, (_, index) => index - firstWeekday + 1);
+  // Use UTC so the official Gregorian layout is never shifted by a browser timezone.
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const leadingBlanks = Array.from({ length: firstWeekday }, (_, index) => index);
+  const calendarDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
 
   const eventForDay = (day: number) => maintenanceEvents.find(
     (event) => event.day === day && event.month === month && event.year === year
@@ -194,13 +196,15 @@ function Calendar({
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
           <span key={day} className="pb-1 text-slate-500">{day}</span>
         ))}
-        {cells.map((day, index) => {
-          if (day < 1) return <span key={index} />;
+        {leadingBlanks.map((index) => (
+          <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
+        ))}
+        {calendarDays.map((day) => {
           const event = eventForDay(day);
           return (
             event ? (
               <button
-                key={day}
+                key={`date-${day}`}
                 aria-label={`${day} ${months[month]}: ${event.title}`}
                 className="calendar-day calendar-event-date"
                 onMouseEnter={() => onEventHover(event)}
@@ -212,7 +216,7 @@ function Calendar({
                 <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
               </button>
             ) : (
-              <div key={day} className="calendar-day"><span>{day}</span></div>
+              <div key={`date-${day}`} className="calendar-day"><span>{day}</span></div>
             )
           );
         })}
@@ -503,7 +507,9 @@ export default function App() {
   const demandBookReady = demandFiles.length === 8;
   const scheduleInputReady = demandBookReady || updateFiles.length > 0;
   const changeMonth = (direction: number) => {
-    setMonth((current) => (current + direction + 12) % 12);
+    const nextDate = new Date(Date.UTC(year, month + direction, 1));
+    setMonth(nextDate.getUTCMonth());
+    setYear(nextDate.getUTCFullYear());
   };
 
   const startRun = async () => {

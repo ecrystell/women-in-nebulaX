@@ -126,6 +126,10 @@ body {
   color: rgb(203 213 225);
 }
 
+.calendar-blank {
+  min-height: 2.55rem;
+}
+
 .calendar-event-date {
   width: 100%;
   border: 0;
