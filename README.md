@@ -155,6 +155,20 @@ docker compose run --rm app python -m app.validation.preflight `
 
 Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. It expands buffer/Live/interchange footprints, but cannot prove the ordering of distinct possession groups from the published output schema; use the organiser website for that final closure decision and every feasibility claim.
 
+### Scenario A solver (implemented)
+
+Run the deterministic CP-SAT Scenario A solver directly without starting the frontend:
+
+```powershell
+$env:PYTHONPATH = "backend"
+python -m backend.app.solver `
+  --scenario A `
+  --input-dir data/public-instance `
+  --output-dir sample_submission/scenario_a
+```
+
+The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. A clean local preflight remains **unverified** until the organiser/reference validator is run. Scenario B and C are extension points only and are not implemented yet.
+
 ## Required exports
 
 For **each** Scenario A, B and C, the tool generates:

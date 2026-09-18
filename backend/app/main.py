@@ -16,11 +16,12 @@ from app.api.errors import ApiException, error_response
 from app.api.routes import router as v1_router
 from app.api.run_service import RunService
 from app.api.schemas import ApiError, ApiFieldError
+from app.solver.adapter import CpSatSolverAdapter
 from app.validation.adapter import OfficialValidatorAdapter
 
 app = FastAPI(title="RailAccess AI", version="0.1.0")
 validator = OfficialValidatorAdapter()
-app.state.run_service = RunService(validator=validator)
+app.state.run_service = RunService(solver=CpSatSolverAdapter(), validator=validator)
 
 
 @app.middleware("http")
