@@ -32,7 +32,7 @@ const maintenanceEvents: MaintenanceEvent[] = [
     line: "ALP",
     time: "00:45–04:30",
     people: "12 engineering staff",
-    colour: "bg-cyan-400"
+    colour: "bg-red-500"
   },
   {
     id: "h01",
@@ -103,7 +103,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
     <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">01 · Network view</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
           <h2 className="mt-1 text-xl font-bold text-white">Dual-line track access topology</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
@@ -173,7 +173,7 @@ function Calendar({
 
   return (
     <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">02 · Maintenance calendar</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">02 · Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
@@ -219,7 +219,7 @@ function Calendar({
         {activeEvent ? (
           <div>
             <p className="font-semibold text-white">{activeEvent.title}</p>
-            <p className="mt-1 text-sm text-cyan-200">{activeEvent.station} · {activeEvent.line} · {activeEvent.time}</p>
+            <p className="mt-1 text-sm text-red-200">{activeEvent.station} · {activeEvent.line} · {activeEvent.time}</p>
             <p className="mt-1 text-xs text-slate-400">{activeEvent.people}</p>
           </div>
         ) : (
@@ -255,7 +255,7 @@ function UploadDropzone({
   return (
     <label
       htmlFor={id}
-      className={`block cursor-pointer rounded-xl border border-dashed p-4 transition ${dragging ? "border-cyan-300 bg-cyan-300/10" : "border-slate-600 bg-slate-900/60 hover:border-cyan-400/70"}`}
+      className={`block cursor-pointer rounded-xl border border-dashed p-4 transition ${dragging ? "border-red-400 bg-red-500/10" : "border-slate-600 bg-slate-900/60 hover:border-red-500/70"}`}
       onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
       onDragOver={(event) => event.preventDefault()}
       onDragLeave={() => setDragging(false)}
@@ -274,11 +274,11 @@ function UploadDropzone({
         onChange={(event) => receiveFiles(Array.from(event.target.files ?? []))}
       />
       <div className="flex gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-400/15 text-xl text-cyan-200">↓</span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/15 text-xl text-red-200">↓</span>
         <div>
           <p className="font-semibold text-white">{title}</p>
           <p className="mt-1 text-xs leading-5 text-slate-400">{description}</p>
-          <p className="mt-2 text-xs font-semibold text-cyan-200">
+          <p className="mt-2 text-xs font-semibold text-red-200">
             {files.length ? `${files.length} CSV file${files.length === 1 ? "" : "s"} selected` : "Drop CSV files here or browse"}
           </p>
         </div>
@@ -313,7 +313,7 @@ function SubmissionEvidencePanel({
 
   return (
     <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">07 · Organiser evidence</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 · Organiser evidence</p>
       <h2 className="mt-1 text-xl font-bold text-white">Manual submission package</h2>
       <p className="mt-2 text-sm leading-6 text-slate-400">
         Run {run.run_id.slice(0, 8)} · {run.status}. Local result: {run.validation_report?.status ?? "unavailable"}.
@@ -324,7 +324,7 @@ function SubmissionEvidencePanel({
         </p>
       )}
       {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
-      {notice && <p className="mt-3 text-sm text-cyan-100">{notice}</p>}
+      {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
 
       {!localClean ? (
         <p className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-400">
@@ -335,7 +335,7 @@ function SubmissionEvidencePanel({
           <button
             disabled={busy}
             onClick={() => void onCreatePackage()}
-            className="rounded-xl bg-cyan-400 px-4 py-3 font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+            className="rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
           >
             Create manual upload ZIP
           </button>
@@ -343,7 +343,7 @@ function SubmissionEvidencePanel({
           {run.submission_packages.map((submissionPackage) => (
             <div key={submissionPackage.package_id} className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm">
               <p className="font-semibold text-white">Package {submissionPackage.package_id.slice(0, 8)} · commit {submissionPackage.build_commit.slice(0, 12)}</p>
-              <div className="mt-2 flex flex-wrap gap-3 text-cyan-200">
+              <div className="mt-2 flex flex-wrap gap-3 text-red-200">
                 <a href={railAccessApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
                 {submissionPackage.organiser_evidence && (
                   <a href={railAccessApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
@@ -399,11 +399,11 @@ function CopilotButton() {
   return (
     <div className="fixed bottom-5 right-5 z-30">
       {open && (
-        <section className="mb-3 w-80 rounded-2xl border border-cyan-300/30 bg-slate-950/95 p-4 shadow-2xl shadow-cyan-950/50 backdrop-blur">
+        <section className="mb-3 w-80 rounded-2xl border border-red-400/30 bg-slate-950/95 p-4 shadow-2xl shadow-red-950/50 backdrop-blur">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-white">RailAccess Copilot</p>
-              <p className="text-xs text-cyan-200">Grounded schedule assistant</p>
+              <p className="text-xs text-red-200">Grounded schedule assistant</p>
             </div>
             <button className="text-slate-400 hover:text-white" onClick={() => setOpen(false)} aria-label="Close copilot">×</button>
           </div>
@@ -424,20 +424,20 @@ function CopilotButton() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder="Ask the copilot…"
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400"
+              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-red-500"
             />
-            <button className="rounded-lg bg-cyan-400 px-3 py-2 text-sm font-bold text-slate-950">Send</button>
+            <button className="rounded-lg bg-red-500 px-3 py-2 text-sm font-bold text-white">Send</button>
           </form>
           <p className="mt-2 text-[11px] leading-4 text-slate-500">The Vertex/Gemini response route will be connected after solver results are available.</p>
         </section>
       )}
       <button
         onClick={() => setOpen((value) => !value)}
-        className="group flex h-15 items-center gap-2 rounded-full border border-cyan-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-cyan-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-cyan-200"
+        className="group flex h-15 items-center gap-2 rounded-full border border-red-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-red-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-red-200"
         aria-label="Open RailAccess Copilot"
       >
         <span className="text-2xl transition group-hover:translate-x-0.5">🚇</span>
-        <span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Ask copilot</span>
+        <span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-red-100">Ask copilot</span>
       </button>
     </div>
   );
@@ -538,8 +538,8 @@ export default function App() {
             <h1 className="editorial-title text-xl font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
           </div>
           <div className="flex flex-wrap gap-2 text-xs">
-            <span className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 font-semibold text-cyan-200">API {health?.status ?? "connecting"}</span>
-            <span className="rounded-md border border-cyan-400/30 bg-cyan-400/10 px-2.5 py-1 font-semibold text-cyan-200">Validator: {validatorStatus}</span>
+            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">API {health?.status ?? "connecting"}</span>
+            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">Validator: {validatorStatus}</span>
           </div>
         </header>
 
@@ -557,7 +557,7 @@ export default function App() {
 
         <section className="mt-3 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]">
           <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">03 · Build schedule</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03 · Build schedule</p>
             <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
             <div className="mt-4">
@@ -576,7 +576,7 @@ export default function App() {
           </div>
 
           <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">04 · Update event</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Update event</p>
             <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
             <div className="mt-4">
@@ -593,7 +593,7 @@ export default function App() {
           </div>
 
           <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05–06 · Optimise</p>
+            <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05–06 · Optimise</p>
             <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
             <div className="mt-4 grid grid-cols-3 gap-2">
@@ -601,7 +601,7 @@ export default function App() {
                 <button
                   key={option}
                   onClick={() => setScenario(option)}
-                  className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-cyan-300 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-400/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-500"}`}
+                  className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                 >
                   {option}
                 </button>
@@ -611,7 +611,7 @@ export default function App() {
             <button
               disabled={!demandBookReady || runBusy}
               onClick={() => void startRun()}
-              className="mt-5 w-full rounded-xl bg-cyan-400 px-4 py-3 font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
             >
               {runBusy ? "Running schedule…" : "Run schedule"}
             </button>
