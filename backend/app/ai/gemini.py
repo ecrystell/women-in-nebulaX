@@ -68,7 +68,12 @@ class VertexGeminiGenerator:
         )
         try:
             client = genai.Client(
-                enterprise=True,
+                # This selects the Vertex AI backend and therefore uses the
+                # Cloud Run service account's Application Default Credentials.
+                # ``enterprise=True`` selects a different Gemini Enterprise
+                # surface and can yield a response shape that is incompatible
+                # with this bounded Vertex-only integration.
+                vertexai=True,
                 project=self.project,
                 location=self.location,
                 http_options=types.HttpOptions(api_version="v1"),
