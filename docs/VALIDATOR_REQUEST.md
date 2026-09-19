@@ -1,6 +1,6 @@
 # Organiser validator request
 
-The public PS1 repository provides `01_data` and a sample answer key, but does not provide a runnable reference validator. RailAccess AI deliberately marks all Phase 0 schedules as **unverified** until the organiser package is integrated.
+The public PS1 repository provides `01_data` and a sample answer key, but does not provide a runnable reference validator. For Rails deliberately marks all Phase 0 schedules as **unverified** until the organiser package is integrated.
 
 Please provide:
 

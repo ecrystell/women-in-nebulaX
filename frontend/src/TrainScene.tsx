@@ -12,38 +12,38 @@ function trackOffsetForZ(z: number) {
 }
 
 function C151CabFront() {
-  const shell = useMemo(() => new RoundedBoxGeometry(2.88, 1.92, 1.06, 6, 0.23), []);
-  const windscreen = useMemo(() => new RoundedBoxGeometry(2.26, 1.04, 0.1, 5, 0.15), []);
-  const destinationDisplay = useMemo(() => new RoundedBoxGeometry(0.7, 0.18, 0.05, 3, 0.04), []);
+  const shell = useMemo(() => new RoundedBoxGeometry(2.9, 2.08, 1.08, 8, 0.3), []);
+  const windscreen = useMemo(() => new RoundedBoxGeometry(2.42, 1.28, 0.1, 7, 0.2), []);
+  const destinationDisplay = useMemo(() => new RoundedBoxGeometry(0.76, 0.16, 0.05, 3, 0.04), []);
 
   return (
     <group>
-      <mesh geometry={shell} position={[0, 0.04, 4.72]} castShadow>
-        <meshStandardMaterial color="#e7ecef" metalness={0.68} roughness={0.22} />
+      <mesh geometry={shell} position={[0, 0.06, 5.18]} castShadow>
+        <meshStandardMaterial color="#eef1f2" metalness={0.65} roughness={0.2} />
       </mesh>
-      <mesh position={[0, 0.97, 4.61]}>
-        <boxGeometry args={[2.36, 0.08, 0.72]} />
-        <meshStandardMaterial color="#c5ced7" metalness={0.7} roughness={0.3} />
+      <mesh position={[0, 0.99, 5.3]}>
+        <boxGeometry args={[2.44, 0.1, 0.78]} />
+        <meshStandardMaterial color="#d5dbe0" metalness={0.74} roughness={0.25} />
       </mesh>
-      <mesh geometry={windscreen} position={[0, 0.22, 5.29]}>
-        <meshStandardMaterial color="#111827" metalness={0.5} roughness={0.1} />
+      <mesh geometry={windscreen} position={[0, 0.21, 5.77]}>
+        <meshStandardMaterial color="#101923" metalness={0.55} roughness={0.08} />
       </mesh>
-      <mesh geometry={destinationDisplay} position={[0, 0.7, 5.37]}>
-        <meshStandardMaterial color="#dbeafe" emissive="#93c5fd" emissiveIntensity={0.7} />
+      <mesh geometry={destinationDisplay} position={[0, 0.72, 5.84]}>
+        <meshStandardMaterial color="#cad2d9" emissive="#1f2937" emissiveIntensity={0.35} />
       </mesh>
-      <mesh position={[0, 0.21, 5.36]}>
-        <boxGeometry args={[0.05, 0.9, 0.045]} />
-        <meshStandardMaterial color="#475569" metalness={0.55} roughness={0.28} />
+      <mesh position={[0, 0.16, 5.84]}>
+        <boxGeometry args={[0.045, 1.04, 0.045]} />
+        <meshStandardMaterial color="#334155" metalness={0.5} roughness={0.3} />
       </mesh>
-      <mesh position={[0, -0.33, 5.3]}>
-        <boxGeometry args={[2.8, 0.24, 0.12]} />
-        <meshStandardMaterial color="#e74949" metalness={0.42} roughness={0.26} />
+      <mesh position={[0, -0.38, 5.83]}>
+        <boxGeometry args={[2.88, 0.27, 0.13]} />
+        <meshStandardMaterial color="#dc3f3f" metalness={0.42} roughness={0.24} />
       </mesh>
       {[-0.84, 0.84].map((x) => (
-        <group key={x} position={[x, -0.48, 5.35]}>
+        <group key={x} position={[x, -0.56, 5.86]}>
           <mesh>
-            <boxGeometry args={[0.5, 0.28, 0.12]} />
-            <meshStandardMaterial color="#475569" metalness={0.72} roughness={0.28} />
+            <boxGeometry args={[0.52, 0.3, 0.13]} />
+            <meshStandardMaterial color="#273548" metalness={0.7} roughness={0.26} />
           </mesh>
           <mesh position={[0, 0, 0.075]}>
             <circleGeometry args={[0.1, 20]} />
@@ -52,12 +52,12 @@ function C151CabFront() {
           <pointLight color="#fff7d6" intensity={22} distance={18} position={[0, 0, 0.32]} />
         </group>
       ))}
-      <mesh position={[0, -0.86, 5.12]}>
-        <boxGeometry args={[2.7, 0.22, 0.35]} />
+      <mesh position={[0, -0.91, 5.54]}>
+        <boxGeometry args={[2.72, 0.26, 0.4]} />
         <meshStandardMaterial color="#1e293b" metalness={0.72} roughness={0.42} />
       </mesh>
-      <mesh position={[0, -0.96, 5.34]}>
-        <boxGeometry args={[0.48, 0.22, 0.46]} />
+      <mesh position={[0, -1.02, 5.84]}>
+        <boxGeometry args={[0.48, 0.2, 0.46]} />
         <meshStandardMaterial color="#111827" metalness={0.74} roughness={0.4} />
       </mesh>
     </group>
@@ -65,10 +65,11 @@ function C151CabFront() {
 }
 
 function MRTCar() {
+  const body = useMemo(() => new RoundedBoxGeometry(2.72, 1.65, 10, 5, 0.12), []);
+
   return (
     <group>
-      <mesh castShadow receiveShadow>
-        <boxGeometry args={[2.72, 1.65, 10]} />
+      <mesh geometry={body} castShadow receiveShadow>
         <meshStandardMaterial color="#d7dde3" metalness={0.74} roughness={0.3} />
       </mesh>
       <mesh position={[0, -0.73, 0]}>
@@ -99,7 +100,7 @@ function MRTCar() {
           {sideWindows.map((z) => (
             <mesh key={z} position={[x < 0 ? -0.04 : 0.04, 0.1, z]}>
               <boxGeometry args={[0.08, 0.56, 0.78]} />
-              <meshStandardMaterial color="#a5d8f5" emissive="#164e63" emissiveIntensity={0.38} metalness={0.3} roughness={0.12} />
+                <meshStandardMaterial color="#263445" emissive="#0f172a" emissiveIntensity={0.28} metalness={0.35} roughness={0.1} />
             </mesh>
           ))}
         </group>

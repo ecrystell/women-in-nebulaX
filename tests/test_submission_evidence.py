@@ -71,7 +71,7 @@ def create_package(client: TestClient, run_id: str) -> dict[str, object]:
 
 
 def test_submission_bundle_manifest_and_evidence_record_are_reproducible(monkeypatch) -> None:
-    monkeypatch.setenv("RAILACCESS_BUILD_COMMIT", BUILD_COMMIT)
+    monkeypatch.setenv("FOR_RAILS_BUILD_COMMIT", BUILD_COMMIT)
     set_service(CleanSolver())
     client = TestClient(app)
     run_id = create_run(client)
@@ -127,7 +127,7 @@ def test_submission_bundle_manifest_and_evidence_record_are_reproducible(monkeyp
 
 
 def test_submission_package_and_evidence_rejections_are_actionable(monkeypatch) -> None:
-    monkeypatch.delenv("RAILACCESS_BUILD_COMMIT", raising=False)
+    monkeypatch.delenv("FOR_RAILS_BUILD_COMMIT", raising=False)
     set_service(CleanSolver())
     client = TestClient(app)
     run_id = create_run(client)
@@ -138,7 +138,7 @@ def test_submission_package_and_evidence_rejections_are_actionable(monkeypatch) 
     assert missing_commit.status_code == 409
     assert missing_commit.json()["error"]["code"] == "submission_provenance_unavailable"
 
-    monkeypatch.setenv("RAILACCESS_BUILD_COMMIT", BUILD_COMMIT)
+    monkeypatch.setenv("FOR_RAILS_BUILD_COMMIT", BUILD_COMMIT)
     blocked_service = set_service()
     blocked_run = create_run(client)
     blocked = client.post(f"/api/v1/runs/{blocked_run}/submission-packages")

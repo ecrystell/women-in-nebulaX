@@ -12,7 +12,7 @@ import type {
   SubmissionPackageSummary
 } from "./types";
 
-export class RailAccessApiError extends Error {
+export class ForRailsApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
@@ -27,7 +27,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`/api/v1${path}`, init);
   if (!response.ok) {
     const payload = (await response.json().catch(() => null)) as ApiErrorResponse | null;
-    throw new RailAccessApiError(
+    throw new ForRailsApiError(
       payload?.error.message ?? `Request failed with status ${response.status}.`,
       response.status,
       payload?.error.code ?? "request_failed",
@@ -37,7 +37,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
-export const railAccessApi = {
+export const forRailsApi = {
   getHealth: () => request<Health>("/health"),
   getCapabilities: () => request<CapabilityReport>("/capabilities"),
   getRun: (runId: string) => request<RunView>(`/runs/${runId}`),

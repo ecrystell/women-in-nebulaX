@@ -218,7 +218,7 @@ class RunService:
 
     @staticmethod
     def _run_ttl_seconds() -> int:
-        raw = os.getenv("RAILACCESS_RUN_TTL_SECONDS", "1800")
+        raw = os.getenv("FOR_RAILS_RUN_TTL_SECONDS", "1800")
         try:
             return max(60, min(int(raw), 86_400))
         except ValueError:
@@ -543,7 +543,7 @@ class RunService:
             return
 
         try:
-            record.export_dir = Path(tempfile.mkdtemp(prefix="railaccess-run-"))
+            record.export_dir = Path(tempfile.mkdtemp(prefix="for-rails-run-"))
             write_submission(output.schedule, record.export_dir)
         except Exception as error:  # pragma: no cover - defensive boundary
             record.status = RunStatus.FAILED
@@ -608,7 +608,7 @@ class RunService:
 
     @staticmethod
     def _build_commit() -> str | None:
-        value = os.getenv("RAILACCESS_BUILD_COMMIT", "").strip().lower()
+        value = os.getenv("FOR_RAILS_BUILD_COMMIT", "").strip().lower()
         if len(value) == 40 and all(character in "0123456789abcdef" for character in value):
             return value
         return None
@@ -644,7 +644,7 @@ class RunService:
         if build_commit is None:
             raise SubmissionPackageError(
                 "submission_provenance_unavailable",
-                "Set RAILACCESS_BUILD_COMMIT to the full 40-character Git commit before creating a submission package.",
+                "Set FOR_RAILS_BUILD_COMMIT to the full 40-character Git commit before creating a submission package.",
             )
         expected_inputs = set(INPUT_TABLES)
         if set(record.input_instance.source.file_checksums) != expected_inputs:

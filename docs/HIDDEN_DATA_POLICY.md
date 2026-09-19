@@ -33,7 +33,7 @@ notice that organiser verification remains unavailable or unverified.
 
 ## Cloud controls
 
-Cloud Run uses a dedicated `railaccess-runtime` service account with only the
+Cloud Run uses a dedicated `for-rails-runtime` service account with only the
 Vertex AI user permission. Authentication uses Cloud Run Application Default
 Credentials; no API key is created. The public hackathon service is limited to
 one concurrent request and one instance, so it intentionally offers no durable

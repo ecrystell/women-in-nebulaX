@@ -1,1 +1,1 @@
-"""RailAccess AI backend package."""
+"""For Rails backend package."""

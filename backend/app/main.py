@@ -21,7 +21,7 @@ from app.ai.disruption_drafts import DisruptionDraftService
 from app.solver.adapter import CpSatSolverAdapter
 from app.validation.adapter import OfficialValidatorAdapter
 
-app = FastAPI(title="RailAccess AI", version="0.1.0")
+app = FastAPI(title="For Rails", version="0.1.0")
 validator = OfficialValidatorAdapter()
 app.state.run_service = RunService(solver=CpSatSolverAdapter(), validator=validator)
 app.state.copilot_service = CopilotService()
@@ -63,7 +63,7 @@ app.include_router(v1_router)
 @app.get("/api/health")
 def health() -> dict[str, object]:
     return {
-        "service": "railaccess-ai",
+        "service": "for-rails",
         "phase": "0",
         "status": "ok",
         "validator_status": validator.status().status.value,

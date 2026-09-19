@@ -160,7 +160,7 @@ def test_copilot_route_requires_schedule_cookie_and_expires(monkeypatch) -> None
     assert denied.status_code == 404
     assert denied.json()["error"]["code"] == "run_not_found"
 
-    monkeypatch.setenv("RAILACCESS_RUN_TTL_SECONDS", "60")
+    monkeypatch.setenv("FOR_RAILS_RUN_TTL_SECONDS", "60")
     record = service.store.get(run_id)
     assert record is not None
     record.last_accessed_at = utc_now() - timedelta(seconds=61)
