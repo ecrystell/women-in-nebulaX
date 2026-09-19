@@ -307,11 +307,26 @@ class ScenarioChangeDraftStatus(str, Enum):
     NEEDS_REVIEW = "needs_review"
 
 
+class RecoveryDraftSource(str, Enum):
+    SUPPLY_CSV = "supply_csv"
+    NATURAL_LANGUAGE = "natural_language"
+    MANUAL_REVIEW = "manual_review"
+
+
+class ScenarioChangeDraftUpdate(ApiModel):
+    """Controller edits made during recovery review; never a confirmation."""
+
+    supply_overrides: list[SupplyOverride] = Field(default_factory=list, max_length=2_000)
+    locked_placements: list[PlacementKey] = Field(default_factory=list, max_length=2_000)
+    rationale: str | None = Field(default=None, max_length=500)
+
+
 class ScenarioChangeDraft(ApiModel):
     """A review-only interpretation; it is never a confirmed change."""
 
     draft_id: str
     change: ScenarioChange
+    source: RecoveryDraftSource
     assumptions: list[str] = Field(default_factory=list, max_length=20)
     unresolved_references: list[str] = Field(default_factory=list, max_length=20)
     field_errors: list[ApiFieldError] = Field(default_factory=list)

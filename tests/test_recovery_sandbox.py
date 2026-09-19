@@ -209,3 +209,60 @@ def test_draft_parser_rejects_live_uploads_and_unsafe_or_invalid_model_output() 
     )
     assert malformed_response.status_code == 503
     assert malformed_response.json()["error"]["code"] == "disruption_parser_unavailable"
+
+
+def test_supply_csv_creates_editable_all_week_draft_for_a_live_run() -> None:
+    set_services(StubDraftGenerator(ready_payload()))
+    client = TestClient(app)
+    live = client.post("/api/v1/runs", data={"scenario": "A"}, files=public_files())
+    assert live.status_code == 202
+    run_id = live.json()["run_id"]
+    for _ in range(30):
+        view = client.get(f"/api/v1/runs/{run_id}")
+        assert view.status_code == 200
+        if view.json()["status"] != "running":
+            break
+    assert view.json()["status"] == "succeeded"
+
+    replacement = (PUBLIC_DATA / "04_LOCATION_SUPPLY.csv").read_text(encoding="utf-8")
+    replacement = replacement.replace("SEC:ALP:S01_S02:EB,tunnel sector,ALP,EB,4", "SEC:ALP:S01_S02:EB,tunnel sector,ALP,EB,2")
+    created = client.post(
+        f"/api/v1/runs/{run_id}/recovery-drafts/supply-csv",
+        files={"file": ("04_LOCATION_SUPPLY.csv", replacement.encode(), "text/csv")},
+    )
+    assert created.status_code == 200, created.text
+    draft = created.json()
+    assert draft["source"] == "supply_csv"
+    assert draft["status"] == "ready"
+    # The public fixture currently has a 30-week horizon; every horizon week is present.
+    assert {item["week"] for item in draft["change"]["supply_overrides"]} == set(range(1, 31))
+
+    edited = client.patch(
+        f"/api/v1/runs/{run_id}/recovery-drafts/{draft['draft_id']}",
+        json={
+            "supply_overrides": [{"location_id": "SEC:ALP:S01_S02:EB", "week": 5, "supply_capacity": 1}],
+            "locked_placements": [{"activity_id": view.json()["schedule"]["placements"][0]["activity_id"], "access_seq": view.json()["schedule"]["placements"][0]["access_seq"]}],
+            "rationale": "Controller narrowed the disruption.",
+        },
+    )
+    assert edited.status_code == 200, edited.text
+    assert edited.json()["source"] == "manual_review"
+    assert edited.json()["change"]["supply_overrides"][0]["week"] == 5
+    confirmation = client.post(f"/api/v1/runs/{run_id}/recovery-drafts/{edited.json()['draft_id']}/confirm")
+    assert confirmation.status_code == 409
+    assert confirmation.json()["error"]["code"] == "recovery_solver_unavailable"
+
+
+def test_supply_csv_rejects_non_capacity_changes_and_noops() -> None:
+    set_services(StubDraftGenerator(ready_payload()))
+    client = TestClient(app)
+    demo = create_demo(client)
+    run_id = demo["run_id"]
+    original = (PUBLIC_DATA / "04_LOCATION_SUPPLY.csv").read_bytes()
+    noop = client.post(f"/api/v1/runs/{run_id}/recovery-drafts/supply-csv", files={"file": ("04_LOCATION_SUPPLY.csv", original, "text/csv")})
+    assert noop.status_code == 422
+    assert noop.json()["error"]["code"] == "recovery_supply_no_changes"
+    altered = original.replace(b"tunnel sector,ALP,EB,4", b"platform sector,ALP,EB,4", 1)
+    invalid = client.post(f"/api/v1/runs/{run_id}/recovery-drafts/supply-csv", files={"file": ("04_LOCATION_SUPPLY.csv", altered, "text/csv")})
+    assert invalid.status_code == 422
+    assert invalid.json()["error"]["code"] == "invalid_recovery_supply_csv"

@@ -8,6 +8,7 @@ import type {
   OrganiserEvidenceInput,
   RunView,
   ScenarioChangeDraft,
+  ScenarioChangeDraftUpdate,
   Scenario,
   SubmissionPackageSummary
 } from "./types";
@@ -71,6 +72,19 @@ export const forRailsApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ text })
     }),
+  createSupplyCsvDraft: (runId: string, file: File) => {
+    const body = new FormData();
+    body.set("file", file, file.name);
+    return request<ScenarioChangeDraft>(`/runs/${runId}/recovery-drafts/supply-csv`, { method: "POST", body });
+  },
+  updateRecoveryDraft: (runId: string, draftId: string, payload: ScenarioChangeDraftUpdate) =>
+    request<ScenarioChangeDraft>(`/runs/${runId}/recovery-drafts/${draftId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    }),
+  confirmRecoveryDraft: (runId: string, draftId: string) =>
+    request<RunView>(`/runs/${runId}/recovery-drafts/${draftId}/confirm`, { method: "POST" }),
   createSubmissionPackage: (runId: string) =>
     request<SubmissionPackageSummary>(`/runs/${runId}/submission-packages`, { method: "POST" }),
   recordOrganiserEvidence: (runId: string, packageId: string, payload: OrganiserEvidenceInput) =>

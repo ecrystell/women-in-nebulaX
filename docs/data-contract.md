@@ -245,6 +245,17 @@ cannot run any solver, validator, exporter, submission action, or real
 recovery. A `ready` draft may only trigger the fixed public replay; extending
 that confirmation path to a live recovery waits for the locked-work solver.
 
+### Recovery review inputs
+
+For Rails accepts an edited `04_LOCATION_SUPPLY.csv` against a completed base
+run. The replacement must retain the exact official headers, location rows and
+metadata; only `supply_capacity` may differ. Each changed capacity initially
+creates an override for every planning week. A controller may narrow weeks,
+select exact baseline placement locks, and add a rationale in the review draft.
+Those edits are deterministically checked and remain unconfirmed until the
+recovery solver is available. Natural-language parsing remains public-demo-only
+so uploaded hidden data is never sent to Gemini.
+
 ## Official CSV and export mapping
 
 | Canonical area | Official source/output | Contract rule |

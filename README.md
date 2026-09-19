@@ -198,8 +198,16 @@ with an uploaded/hidden instance.
 When Vertex is enabled, the demo also accepts a short controller instruction
 and returns a review-only typed disruption draft. Only recognised public
 location and placement identifiers are retained; unknown or ambiguous values
-remain errors. A ready draft can replay the fixed demo only. Real disruption
-recovery remains unavailable until the locked-work recovery solver is wired in.
+remain errors. A ready draft can replay the fixed demo only.
+
+For a completed live run, a controller may also upload a replacement official
+`04_LOCATION_SUPPLY.csv`. For Rails compares it with the base input, accepts
+capacity-only differences, expands those changes across the planning horizon,
+and opens an editable review draft for week scoping and placement locks. This
+does not create a recovered schedule until the locked-work recovery solver is
+connected. Natural-language parsing remains public-demo-only, so hidden upload
+data is never sent to Gemini. Real disruption recovery remains unavailable
+until the locked-work recovery solver is wired in.
 
 ### Scenario A/C solver (implemented)
 
