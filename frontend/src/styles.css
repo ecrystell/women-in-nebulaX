@@ -54,6 +54,59 @@ body {
   box-shadow: 0 0.75rem 1.8rem rgb(2 6 23 / 34%);
 }
 
+.c151-card {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  min-height: 12rem;
+  padding: 1.35rem 1.3rem 2.55rem !important;
+  border: 0.3rem solid rgb(165 177 187 / 96%) !important;
+  border-bottom-width: 0.68rem !important;
+  border-bottom-color: rgb(84 98 110 / 98%) !important;
+  border-radius: 1.75rem 1.75rem 1.1rem 1.1rem;
+  background: #cdd5db !important;
+  box-shadow:
+    inset 0 0.16rem 0 rgb(255 255 255 / 88%),
+    inset 0 -0.12rem 0 rgb(71 85 105 / 65%),
+    0 1rem 2.2rem rgb(2 6 23 / 58%);
+}
+
+.c151-card::before {
+  position: absolute;
+  inset: 0.34rem 0.34rem 0.82rem;
+  z-index: 0;
+  border: 1px solid rgb(226 232 240 / 46%);
+  border-radius: 1.12rem 1.12rem 0.72rem 0.72rem;
+  background: #0b1220;
+  box-shadow:
+    inset 0 0.18rem 0.65rem rgb(226 232 240 / 16%),
+    inset 0 -0.9rem 1.2rem rgb(2 6 23 / 58%);
+  content: "";
+}
+
+.c151-card::after {
+  position: absolute;
+  right: 0.62rem;
+  bottom: 0.38rem;
+  left: 0.62rem;
+  z-index: 0;
+  height: 0.46rem;
+  border-radius: 999px;
+  background: #df4b4d;
+  box-shadow: 0 0 0.72rem rgb(231 73 73 / 52%);
+  content: "";
+}
+
+.c151-card > * {
+  position: relative;
+  z-index: 1;
+}
+
+.c151-card .section-heading,
+.c151-card > p:first-child {
+  text-shadow: 0 1px 0 rgb(2 6 23 / 92%);
+}
+
 .editorial-card .text-white {
   color: #f8fafc !important;
 }

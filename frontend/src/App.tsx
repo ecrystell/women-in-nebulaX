@@ -104,7 +104,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
   };
 
   return (
-    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
@@ -178,7 +178,7 @@ function Calendar({
   );
 
   return (
-    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -303,7 +303,7 @@ const publicScheduleFiles = [
 
 function PublicScheduleDownloads() {
   return (
-    <section className="editorial-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card c151-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
       <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
@@ -624,10 +624,6 @@ export default function App() {
           <div className="flex flex-wrap items-center justify-between gap-3">
             <h1 className="editorial-title text-lg font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
           </div>
-          <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs">
-            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">API {health?.status ?? "connecting"}</span>
-            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">Validator: {validatorStatus}</span>
-          </div>
         </header>
 
         <div className="mt-3 flex justify-end">
@@ -673,7 +669,7 @@ export default function App() {
           </>
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
-            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+            <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
@@ -692,16 +688,16 @@ export default function App() {
               </p>
             </div>
 
-            <div className="editorial-card rounded-2xl border border-cyan-300/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05 · Recovery</p>
+            <div className="editorial-card c151-card rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Recovery</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
-              <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
+              <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
               <p className="mt-3 text-xs text-slate-500">{capabilities?.recovery.message ?? "Checking recovery capability…"}</p>
             </div>
 
-            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
+            <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">06 · Optimise</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
