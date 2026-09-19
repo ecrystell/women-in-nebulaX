@@ -801,8 +801,10 @@ export default function App() {
               <button
                 disabled={!scheduleInputReady || runBusy || !capabilities?.scenarios.find((item) => item.scenario === scenario)?.available}
                 onClick={() => void startRun()}
-                className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                aria-busy={runBusy}
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
+                {runBusy && <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />}
                 {runBusy ? "Running schedule…" : "Run schedule"}
               </button>
               <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>
