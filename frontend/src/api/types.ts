@@ -66,10 +66,18 @@ export type ScheduleDiff = {
   completion_delta?: Record<string, number>;
 };
 
+export type SolverDiagnostics = {
+  status: string;
+  wall_time_seconds: number;
+  time_limit_seconds: number;
+  recovery_source?: "reoptimized" | "incumbent_not_worse" | "incumbent_fallback" | null;
+};
+
 export type FeatureCapability = {
   available: boolean;
   code?: string | null;
   message: string;
+  supported_scenarios: Scenario[];
 };
 
 export type CapabilityReport = {
@@ -140,6 +148,7 @@ export type RunView = {
   schedule?: Schedule;
   validation_report?: ValidationReport;
   schedule_diff?: ScheduleDiff;
+  solver_diagnostics?: SolverDiagnostics;
   problem?: { code: string; message: string };
   demo: boolean;
   demo_notice?: string | null;

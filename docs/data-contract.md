@@ -213,6 +213,14 @@ workflow may be started. Each Scenario A/B/C entry and the `recovery`,
 `public_demo_recovery`, and `disruption_drafts` features expose `available`, a
 stable unavailable `code`, and a human-readable `message`.
 
+Fresh Scenario A, B, and C runs are available through the delivered CP-SAT
+adapter. `recovery.supported_scenarios` is the authoritative list for live
+re-optimisation and currently contains only `C`. Each terminal `RunView` may
+include `solver_diagnostics` (`status`, `wall_time_seconds`, and
+`time_limit_seconds`); a recovery also records whether its returned candidate
+was `reoptimized`, `incumbent_not_worse`, or an `incumbent_fallback`. These are
+execution facts, never organiser feasibility evidence.
+
 The public demonstration is deliberately separate from an uploaded instance:
 
 - it is created only from the repository-owned, checksum-verified public
@@ -238,12 +246,13 @@ type ScenarioChangeDraft = {
 };
 ```
 
-R4.8A restricts this endpoint to the public demo and passes the model only the
-controller text plus bounded public location and placement identifiers. Server
-code validates every generated reference before retaining the draft. A draft
-cannot run any solver, validator, exporter, submission action, or real
-recovery. A `ready` draft may only trigger the fixed public replay; extending
-that confirmation path to a live recovery waits for the locked-work solver.
+The public demo and a successful live Scenario C run may use this endpoint.
+The model receives only controller text, a bounded supply-location identifier
+list, the planning horizon, and bounded baseline placement keys. Server code
+validates every generated reference before retaining the draft. A draft cannot
+run any solver, validator, exporter, or submission action. A `ready` live C
+draft can only reach recovery after explicit controller confirmation; Scenario
+A/B remain unavailable for recovery.
 
 ### Recovery review inputs
 
@@ -252,9 +261,12 @@ run. The replacement must retain the exact official headers, location rows and
 metadata; only `supply_capacity` may differ. Each changed capacity initially
 creates an override for every planning week. A controller may narrow weeks,
 select exact baseline placement locks, and add a rationale in the review draft.
-Those edits are deterministically checked and remain unconfirmed until the
-recovery solver is available. Natural-language parsing remains public-demo-only
-so uploaded hidden data is never sent to Gemini.
+Those edits are deterministically checked and remain unconfirmed until a
+controller confirms them. Confirmed edits dispatch only for scenarios exposed
+by `recovery.supported_scenarios` (currently Scenario C), then receive the same
+local-preflight and export gate as a fresh run. Live natural-language parsing
+uses the bounded identifier-only policy above; uploaded Scenario A/B runs use
+CSV/manual review only.
 
 ## Official CSV and export mapping
 

@@ -1,4 +1,4 @@
-"""Public-fixture-only, review-only disruption draft parsing.
+"""Bounded, review-only disruption draft parsing.
 
 This module deliberately has no import from solver, exporter, organiser
 submission, or recovery dispatch code.  It can interpret a bounded controller
@@ -8,11 +8,12 @@ request but cannot execute it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.api.schemas import (
     ApiFieldError,
@@ -20,10 +21,14 @@ from app.api.schemas import (
     ScenarioChangeDraft,
     ScenarioChangeDraftStatus,
     ScenarioChangeDraftUpdate,
+    PlacementKey,
     RecoveryDraftSource,
     SupplyOverride,
 )
 from app.api.run_service import RunRecord
+
+
+logger = logging.getLogger(__name__)
 
 
 class DisruptionDraftUnavailable(RuntimeError):
@@ -34,7 +39,11 @@ class _DraftOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     supply_overrides: list[SupplyOverride] = Field(default_factory=list, max_length=12)
-    locked_placements: list[dict[str, object]] = Field(default_factory=list, max_length=24)
+    # Vertex structured output supports a concrete object schema.  An
+    # untyped ``dict[str, object]`` becomes an open-ended JSON object and can
+    # be rejected before Gemini is invoked, so keep this aligned with the
+    # API's existing, bounded placement-key contract.
+    locked_placements: list[PlacementKey] = Field(default_factory=list, max_length=24)
     rationale: str | None = Field(default=None, max_length=500)
     assumptions: list[str] = Field(default_factory=list, max_length=12)
     unresolved_references: list[str] = Field(default_factory=list, max_length=12)
@@ -57,6 +66,31 @@ class VertexDraftGenerator:
             and bool(os.getenv("FOR_RAILS_GCP_PROJECT", "").strip())
         )
 
+    @staticmethod
+    def _final_json_text(response: object) -> str:
+        """Extract only Gemini's final, non-thinking text part.
+
+        Gemini 2.5 can emit an internal thought part ahead of the final answer.
+        ``response.text`` is convenient for prose, but is not a reliable JSON
+        boundary in that case.  This path deliberately selects the final
+        non-thought part and accepts an incidental Markdown fence only after
+        the model has been instructed to return JSON.
+        """
+        text_parts: list[str] = []
+        for candidate in getattr(response, "candidates", None) or []:
+            content = getattr(candidate, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                text = getattr(part, "text", None)
+                if isinstance(text, str) and text.strip() and not getattr(part, "thought", False):
+                    text_parts.append(text)
+        raw = text_parts[-1] if text_parts else (getattr(response, "text", None) or "")
+        value = raw.strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if len(lines) >= 2 and lines[-1].strip().startswith("```"):
+                value = "\n".join(lines[1:-1]).strip()
+        return value
+
     def generate(self, context: dict[str, object]) -> str:
         if not self.available:
             raise DisruptionDraftUnavailable("The draft parser is not enabled for this service.")
@@ -67,9 +101,13 @@ class VertexDraftGenerator:
             raise DisruptionDraftUnavailable("The Vertex AI client is not installed.") from error
         instruction = (
             "You convert a controller's disruption request into a review-only JSON draft. "
-            "Use only the supplied public reference list. Never invent IDs, make a schedule, "
+            "Use only the supplied bounded reference list. Never invent IDs, make a schedule, "
             "claim feasibility, call tools, or set confirmation. If a reference is ambiguous or "
-            "missing, leave it out and explain it in unresolved_references. Return JSON only."
+            "missing, leave it out and explain it in unresolved_references. Return exactly one JSON "
+            "object with only these keys: supply_overrides (an array of objects with location_id, week, "
+            "and supply_capacity), locked_placements (an array of objects with activity_id and access_seq), "
+            "rationale (string or null), assumptions (array of strings), and unresolved_references "
+            "(array of strings). Return JSON only."
         )
         try:
             client = genai.Client(
@@ -86,7 +124,11 @@ class VertexDraftGenerator:
                     temperature=0,
                     max_output_tokens=700,
                     response_mime_type="application/json",
-                    response_schema=_DraftOutput,
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
+                    # The Vertex endpoint accepts the model and JSON MIME type, but its
+                    # structured-output schema subset can reject a nested draft model
+                    # before generation.  Pydantic below remains the authoritative,
+                    # strict schema validator for the returned JSON.
                 ),
             )
             parsed = getattr(response, "parsed", None)
@@ -96,8 +138,15 @@ class VertexDraftGenerator:
                 return json.dumps(parsed, separators=(",", ":"))
             if isinstance(parsed, str):
                 return parsed
-            return response.text or ""
+            return self._final_json_text(response)
         except Exception as error:
+            # Log only operational metadata. Prompts, reference data and any
+            # model response must never enter application logs.
+            logger.warning(
+                "vertex_draft_generation_failed error_type=%s status=%s",
+                type(error).__name__,
+                getattr(error, "status", getattr(error, "code", None)),
+            )
             raise DisruptionDraftUnavailable("Vertex AI could not produce a disruption draft.") from error
 
 
@@ -113,14 +162,13 @@ class DisruptionDraftService:
         if not self.available:
             raise DisruptionDraftUnavailable("The draft parser is not enabled for this service.")
         if record.schedule is None or record.prepared_instance is None:
-            raise DisruptionDraftUnavailable("A public demo schedule is required before parsing a disruption.")
+            raise DisruptionDraftUnavailable("A completed schedule is required before parsing a disruption.")
         context = {
             "request": text,
             "scenario": record.scenario.value,
-            "schedule_id": record.schedule.schedule_id,
             "horizon_weeks": record.prepared_instance.calendar.horizon_weeks,
-            # These are identifiers only, not source rows, placements, exports,
-            # checksums, organiser metadata, or raw CSV data.
+            # These are bounded identifiers only, not source rows, placements,
+            # exports, checksums, organiser metadata, or raw CSV data.
             "valid_supply_locations": sorted(record.prepared_instance.supply)[:200],
             "valid_placement_keys": [
                 {"activity_id": item.activity_id, "access_seq": item.access_seq}
@@ -131,6 +179,16 @@ class DisruptionDraftService:
             parsed = _DraftOutput.model_validate_json(self.generator.generate(context))
         except DisruptionDraftUnavailable:
             raise
+        except ValidationError as error:
+            # Keep the production diagnostic useful without retaining model output
+            # or controller content.  A path plus Pydantic error category is enough
+            # to distinguish malformed JSON from a contract mismatch.
+            problem_fields = [
+                {"path": ".".join(str(part) for part in item["loc"]), "type": item["type"]}
+                for item in error.errors(include_input=False)
+            ]
+            logger.warning("vertex_draft_invalid_schema error_fields=%s", problem_fields)
+            raise DisruptionDraftUnavailable("Vertex AI returned an invalid disruption draft.") from error
         except Exception as error:
             raise DisruptionDraftUnavailable("Vertex AI returned an invalid disruption draft.") from error
         prose = " ".join(

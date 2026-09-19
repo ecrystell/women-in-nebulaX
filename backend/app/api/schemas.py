@@ -297,7 +297,7 @@ class ApiFieldError(ApiModel):
 
 
 class ScenarioChangeDraftRequest(ApiModel):
-    """Bounded controller prose for the public-fixture draft parser."""
+    """Bounded controller prose for the review-only disruption draft parser."""
 
     text: str = Field(min_length=1, max_length=1_000)
 
@@ -360,6 +360,15 @@ class ScheduleDiff(ApiModel):
     completion_delta: dict[str, float] | None = None
 
 
+class SolverDiagnostics(ApiModel):
+    """Non-authoritative CP-SAT execution evidence for one API run."""
+
+    status: str
+    wall_time_seconds: float = Field(ge=0)
+    time_limit_seconds: float = Field(gt=0)
+    recovery_source: Literal["reoptimized", "incumbent_not_worse", "incumbent_fallback"] | None = None
+
+
 class RunStatus(str, Enum):
     ACCEPTED = "accepted"
     RUNNING = "running"
@@ -372,6 +381,7 @@ class FeatureCapability(ApiModel):
     available: bool
     code: str | None = None
     message: str
+    supported_scenarios: list[Scenario] = Field(default_factory=list)
 
 
 class ScenarioCapability(FeatureCapability):
@@ -553,6 +563,7 @@ class RunView(ApiModel):
     schedule: Schedule | None = None
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
+    solver_diagnostics: SolverDiagnostics | None = None
     problem: RunProblem | None = None
     demo: bool = False
     demo_notice: str | None = None

@@ -5,10 +5,11 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 from pathlib import Path
+from types import SimpleNamespace
 
 from fastapi.testclient import TestClient
 
-from app.ai.gemini import CopilotService
+from app.ai.gemini import CopilotService, VertexGeminiGenerator
 from app.ai.evidence import _location_label
 from app.api.run_service import RunService, SolverOutput, utc_now
 from app.domain.models import Scenario
@@ -53,6 +54,33 @@ class AnswerOnlyGenerator(CapturingGenerator):
     def generate(self, evidence, mode) -> str:
         self.payloads.append(evidence.model_dump(mode="json"))
         return json.dumps({"answer": self.answer})
+
+
+def test_vertex_extracts_only_the_final_non_thinking_json_part() -> None:
+    response = SimpleNamespace(
+        text='{"answer":"stale thought text"}',
+        candidates=[
+            SimpleNamespace(
+                content=SimpleNamespace(
+                    parts=[
+                        SimpleNamespace(text='{"answer":"internal trace"}', thought=True),
+                        SimpleNamespace(
+                            text='```json\n{"answer":"The requested hotspot evidence is summarised.","mode":"capacity_hotspots"}\n```',
+                            thought=False,
+                        ),
+                    ]
+                )
+            )
+        ],
+    )
+
+    raw = VertexGeminiGenerator._final_json_text(response)
+    assert raw.startswith("```json")
+    # The regular response path accepts an incidental fence and ignores a
+    # harmless provider-added field while retaining the required answer.
+    from app.ai.gemini import _Narrative, _normalise_json
+
+    assert _Narrative.model_validate_json(_normalise_json(raw)).answer == "The requested hotspot evidence is summarised."
 
 
 def set_services(generator: CapturingGenerator | None = None) -> tuple[RunService, CapturingGenerator]:
@@ -149,6 +177,29 @@ def test_copilot_binds_an_answer_only_provider_response_to_server_evidence() -> 
     assert response.status_code == 200
     assert response.json()["evidence"]["run_id"] == run_id
     assert response.json()["evidence"]["schedule_id"]
+
+
+def test_public_disruption_demo_never_calls_vertex_for_copilot_briefs() -> None:
+    _, generator = set_services()
+    client = TestClient(app)
+    demo = client.post("/api/v1/demo-runs")
+    assert demo.status_code == 201, demo.text
+    run_id = demo.json()["run_id"]
+
+    response = client.post(
+        f"/api/v1/runs/{run_id}/copilot-responses",
+        json={"mode": "capacity_hotspots"},
+    )
+    assert response.status_code == 409
+    body = response.json()["error"]
+    assert body["code"] == "evidence_unavailable"
+    assert "all eight CSV files" in body["message"]
+    assert "Vertex" not in body["message"]
+    assert generator.payloads == []
+
+    evidence = client.get(f"/api/v1/runs/{run_id}/evidence/handover")
+    assert evidence.status_code == 409
+    assert "all eight CSV files" in evidence.json()["error"]["message"]
 
 
 def test_copilot_route_requires_schedule_cookie_and_expires(monkeypatch) -> None:

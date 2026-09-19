@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { forRailsApi, ForRailsApiError } from "./api/client";
-import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft, ScenarioChangeDraftUpdate } from "./api/types";
+import type { CapabilityReport, Health, RunView, Scenario, ScenarioChangeDraft, ScenarioChangeDraftUpdate } from "./api/types";
 import { TrainScene } from "./TrainScene";
 import { GroundedCopilot } from "./GroundedCopilot";
 import { RecoverySandbox } from "./RecoverySandbox";
@@ -19,6 +19,7 @@ type MaintenanceEvent = {
 };
 
 type PlannerPage = "overview" | "setup";
+type CalendarView = "month" | "week" | "day";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -65,11 +66,38 @@ const maintenanceEvents: MaintenanceEvent[] = [
 ];
 
 const stars = [
-  ["5%", "12%", 2, "0s"], ["12%", "42%", 3, "1.4s"], ["18%", "19%", 2, "2.1s"],
-  ["24%", "70%", 3, "0.6s"], ["31%", "9%", 2, "2.8s"], ["38%", "55%", 2, "1.1s"],
-  ["44%", "31%", 3, "2.4s"], ["51%", "15%", 2, "0.3s"], ["57%", "76%", 3, "1.8s"],
-  ["63%", "43%", 2, "2.6s"], ["69%", "7%", 3, "0.9s"], ["75%", "63%", 2, "1.5s"],
-  ["82%", "26%", 3, "2.9s"], ["89%", "48%", 2, "0.5s"], ["94%", "17%", 3, "2s"]
+  ["3%", "28%", 1, "1.7s"], ["5%", "12%", 2, "0s"], ["7%", "77%", 2, "2.5s"],
+  ["10%", "57%", 1, "0.8s"], ["12%", "42%", 3, "1.4s"], ["14%", "91%", 1, "2.2s"],
+  ["18%", "19%", 2, "2.1s"], ["20%", "63%", 1, "0.2s"], ["22%", "35%", 2, "3s"],
+  ["24%", "70%", 3, "0.6s"], ["27%", "48%", 1, "1.9s"], ["29%", "88%", 2, "1.2s"],
+  ["31%", "9%", 2, "2.8s"], ["34%", "27%", 1, "0.5s"], ["36%", "75%", 2, "2.3s"],
+  ["38%", "55%", 2, "1.1s"], ["41%", "13%", 1, "2.7s"], ["44%", "31%", 3, "2.4s"],
+  ["46%", "67%", 1, "0.9s"], ["49%", "86%", 2, "1.6s"], ["51%", "15%", 2, "0.3s"],
+  ["54%", "49%", 1, "2.9s"], ["57%", "76%", 3, "1.8s"], ["59%", "25%", 2, "0.7s"],
+  ["61%", "92%", 1, "2s"], ["63%", "43%", 2, "2.6s"], ["66%", "61%", 1, "1.3s"],
+  ["69%", "7%", 3, "0.9s"], ["71%", "34%", 1, "2.1s"], ["73%", "83%", 2, "0.4s"],
+  ["75%", "63%", 2, "1.5s"], ["78%", "14%", 1, "2.8s"], ["80%", "54%", 2, "1s"],
+  ["82%", "26%", 3, "2.9s"], ["85%", "71%", 1, "0.1s"], ["87%", "38%", 2, "2.4s"],
+  ["89%", "48%", 2, "0.5s"], ["91%", "88%", 1, "1.8s"], ["94%", "17%", 3, "2s"],
+  ["97%", "65%", 2, "1.1s"], ["1%", "47%", 1, "0.6s"], ["4%", "5%", 1, "2.6s"],
+  ["6%", "94%", 1, "1.1s"], ["9%", "31%", 1, "2.2s"], ["11%", "68%", 1, "0.4s"],
+  ["13%", "4%", 1, "1.5s"], ["15%", "52%", 1, "2.9s"], ["17%", "82%", 1, "0.7s"],
+  ["19%", "44%", 1, "1.8s"], ["21%", "6%", 1, "0.3s"], ["23%", "96%", 1, "2.4s"],
+  ["25%", "18%", 1, "1.4s"], ["26%", "59%", 1, "0.1s"], ["28%", "39%", 1, "2.7s"],
+  ["30%", "74%", 1, "0.9s"], ["32%", "47%", 1, "2s"], ["33%", "19%", 1, "1.2s"],
+  ["35%", "93%", 1, "2.5s"], ["37%", "36%", 1, "0.5s"], ["39%", "65%", 1, "1.7s"],
+  ["40%", "5%", 1, "2.3s"], ["42%", "81%", 1, "0.8s"], ["43%", "46%", 1, "1.9s"],
+  ["45%", "22%", 1, "0.2s"], ["47%", "94%", 1, "2.8s"], ["48%", "57%", 1, "1s"],
+  ["50%", "38%", 1, "2.1s"], ["52%", "73%", 1, "0.4s"], ["53%", "4%", 1, "1.6s"],
+  ["55%", "31%", 1, "2.6s"], ["56%", "91%", 1, "0.7s"], ["58%", "56%", 1, "1.4s"],
+  ["60%", "18%", 1, "0.1s"], ["62%", "81%", 1, "2.5s"], ["64%", "30%", 1, "1.2s"],
+  ["65%", "96%", 1, "1.9s"], ["67%", "51%", 1, "0.5s"], ["68%", "15%", 1, "2.7s"],
+  ["70%", "69%", 1, "0.8s"], ["72%", "44%", 1, "1.7s"], ["74%", "97%", 1, "2.2s"],
+  ["76%", "36%", 1, "0.3s"], ["77%", "79%", 1, "2.9s"], ["79%", "3%", 1, "1.1s"],
+  ["81%", "59%", 1, "2s"], ["83%", "92%", 1, "0.6s"], ["84%", "11%", 1, "1.5s"],
+  ["86%", "47%", 1, "2.4s"], ["88%", "76%", 1, "0.9s"], ["90%", "29%", 1, "1.8s"],
+  ["92%", "58%", 1, "0.2s"], ["93%", "4%", 1, "2.6s"], ["95%", "83%", 1, "1.3s"],
+  ["96%", "41%", 1, "2.1s"], ["98%", "9%", 1, "0.7s"], ["99%", "92%", 1, "1.6s"]
 ] as const;
 
 function TrackDiagram({ activeStation }: { activeStation: string | null }) {
@@ -107,7 +135,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Network view</p>
           <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Tracks overview</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
@@ -167,20 +195,69 @@ function Calendar({
   onYearChange: (direction: number) => void;
   onEventHover: (event: MaintenanceEvent | null) => void;
 }) {
+  const [view, setView] = useState<CalendarView>("month");
+  const [focusedDay, setFocusedDay] = useState(1);
   // Use UTC so the official Gregorian layout is never shifted by a browser timezone.
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const selectedDay = Math.min(focusedDay, daysInMonth);
+  const focusedDate = new Date(Date.UTC(year, month, selectedDay));
   const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const leadingBlanks = Array.from({ length: firstWeekday }, (_, index) => index);
   const calendarDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const weekStart = new Date(Date.UTC(year, month, selectedDay - focusedDate.getUTCDay()));
+  const weekDates = Array.from({ length: 7 }, (_, index) => new Date(Date.UTC(
+    weekStart.getUTCFullYear(),
+    weekStart.getUTCMonth(),
+    weekStart.getUTCDate() + index
+  )));
+  const daySlots = Array.from({ length: 24 }, (_, index) => {
+    const minutes = index * 15;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
 
   const eventForDay = (day: number) => maintenanceEvents.find(
     (event) => event.day === day && event.month === month && event.year === year
   );
+  const eventForDate = (date: Date) => maintenanceEvents.find(
+    (event) => event.day === date.getUTCDate()
+      && event.month === date.getUTCMonth()
+      && event.year === date.getUTCFullYear()
+  );
+  const focusedEvents = maintenanceEvents.filter(
+    (event) => event.day === selectedDay && event.month === month && event.year === year
+  );
+  const eventHandlers = (event: MaintenanceEvent) => ({
+    onMouseEnter: () => onEventHover(event),
+    onFocus: () => onEventHover(event),
+    onMouseLeave: () => onEventHover(null),
+    onBlur: () => onEventHover(null),
+  });
+  const moveFocusedDate = (days: number) => {
+    const nextDate = new Date(Date.UTC(year, month, selectedDay + days));
+    const monthOffset = (nextDate.getUTCFullYear() - year) * 12 + nextDate.getUTCMonth() - month;
+    if (monthOffset) onMonthChange(monthOffset);
+    setFocusedDay(nextDate.getUTCDate());
+  };
+  const selectDate = (date: Date) => {
+    const monthOffset = (date.getUTCFullYear() - year) * 12 + date.getUTCMonth() - month;
+    if (monthOffset) onMonthChange(monthOffset);
+    setFocusedDay(date.getUTCDate());
+  };
+  const eventGridRow = (event: MaintenanceEvent) => {
+    const [startValue, endValue] = event.time.split("–");
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+    const startSlot = Math.max(0, Math.floor(toMinutes(startValue) / 15));
+    const endSlot = Math.min(daySlots.length, Math.ceil(toMinutes(endValue) / 15));
+    return `${startSlot + 1} / ${Math.max(startSlot + 2, endSlot + 1)}`;
+  };
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Maintenance calendar</p>
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
           <span className="min-w-28 text-center font-bold text-white">{months[month]}</span>
@@ -191,37 +268,110 @@ function Calendar({
           <span className="min-w-12 text-center font-bold text-white">{year}</span>
           <button className="calendar-arrow" onClick={() => onYearChange(1)} aria-label="Next year">→</button>
         </div>
+        <div className="flex rounded-lg border border-slate-700 bg-slate-950/80 p-0.5" aria-label="Calendar view">
+          {(["day", "week", "month"] as CalendarView[]).map((option) => (
+            <button
+              key={option}
+              onClick={() => setView(option)}
+              className={`rounded-md px-2.5 py-1 text-xs font-bold capitalize transition ${view === option ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:text-slate-100"}`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-7 gap-1 text-center text-xs">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <span key={day} className="pb-1 text-slate-500">{day}</span>
-        ))}
-        {leadingBlanks.map((index) => (
-          <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
-        ))}
-        {calendarDays.map((day) => {
-          const event = eventForDay(day);
-          return (
-            event ? (
+      {view !== "month" && (
+        <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950/60 px-2 py-1.5">
+          <button className="calendar-arrow" onClick={() => moveFocusedDate(view === "week" ? -7 : -1)} aria-label={view === "week" ? "Previous week" : "Previous day"}>←</button>
+          <span className="text-center text-xs font-bold text-slate-200">
+            {view === "week"
+              ? `${months[weekDates[0].getUTCMonth()].slice(0, 3)} ${weekDates[0].getUTCDate()} – ${months[weekDates[6].getUTCMonth()].slice(0, 3)} ${weekDates[6].getUTCDate()}`
+              : `${months[month]} ${selectedDay}, ${year}`}
+          </span>
+          <button className="calendar-arrow" onClick={() => moveFocusedDate(view === "week" ? 7 : 1)} aria-label={view === "week" ? "Next week" : "Next day"}>→</button>
+        </div>
+      )}
+
+      {view === "month" && (
+        <div className="mt-5 grid grid-cols-7 gap-1 text-center text-xs">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <span key={day} className="pb-1 text-slate-500">{day}</span>
+          ))}
+          {leadingBlanks.map((index) => (
+            <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
+          ))}
+          {calendarDays.map((day) => {
+            const event = eventForDay(day);
+            return (
               <button
                 key={`date-${day}`}
-                aria-label={`${day} ${months[month]}: ${event.title}`}
-                className="calendar-day calendar-event-date"
-                onMouseEnter={() => onEventHover(event)}
-                onFocus={() => onEventHover(event)}
-                onMouseLeave={() => onEventHover(null)}
-                onBlur={() => onEventHover(null)}
+                aria-label={event ? `${day} ${months[month]}: ${event.title}` : `${day} ${months[month]}`}
+                className={`calendar-day calendar-event-date ${day === selectedDay ? "bg-slate-800/70 ring-1 ring-slate-600" : ""}`}
+                onClick={() => setFocusedDay(day)}
+                {...(event ? eventHandlers(event) : {})}
               >
                 <span className="font-bold">{day}</span>
-                <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
+                {event && <span className={`calendar-event ${event.colour}`} aria-hidden="true" />}
               </button>
-            ) : (
-              <div key={`date-${day}`} className="calendar-day"><span>{day}</span></div>
-            )
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "week" && (
+        <div className="mt-5 grid grid-cols-7 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70 text-center">
+          {weekDates.map((date) => {
+            const event = eventForDate(date);
+            const isFocused = date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === selectedDay;
+            return (
+              <div key={date.toISOString()} className={`min-h-32 border-r border-slate-800 px-1 py-2 last:border-r-0 ${isFocused ? "bg-slate-800/70" : ""}`}>
+                <p className="text-[10px] font-bold uppercase text-slate-500">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()]}</p>
+                <p className="mt-1 text-sm font-bold text-white">{date.getUTCDate()}</p>
+                {event && (
+                  <button {...eventHandlers(event)} onClick={() => selectDate(date)} className={`mt-3 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
+                    <span className="block opacity-80">{event.time}</span>
+                    <span className="mt-1 block">{event.title}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "day" && (
+        <div className="mt-5 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70">
+          <div className="border-b border-slate-700 px-3 py-2 text-sm font-bold text-white">
+            {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][focusedDate.getUTCDay()]}, {months[month]} {selectedDay}
+          </div>
+          <div className="grid grid-cols-[3.7rem_1fr]">
+            <div className="grid border-r border-slate-800" style={{ gridTemplateRows: "repeat(24, minmax(1.25rem, auto))" }}>
+              {daySlots.map((slot, index) => (
+                <span key={slot} className="border-b border-slate-800/80 px-2 pt-0.5 text-[10px] font-semibold text-slate-500" style={{ gridRow: index + 1, gridColumn: 1 }}>
+                  {slot.endsWith(":00") ? slot : ""}
+                </span>
+              ))}
+            </div>
+            <div className="grid p-1.5" style={{ gridTemplateRows: "repeat(24, minmax(1.25rem, auto))" }}>
+              {daySlots.map((slot, index) => (
+                <span key={slot} className="border-b border-slate-800/80" style={{ gridRow: index + 1, gridColumn: 1 }} />
+              ))}
+              {focusedEvents.map((event) => (
+                <button
+                  key={event.id}
+                  {...eventHandlers(event)}
+                  className={`z-10 m-0.5 rounded-md ${event.colour} px-2 py-1 text-left text-xs font-bold text-white shadow-sm`}
+                  style={{ gridRow: eventGridRow(event), gridColumn: 1 }}
+                >
+                  {event.title} <span className="font-medium opacity-85">· {event.time}</span>
+                </button>
+              ))}
+              {!focusedEvents.length && <p className="z-10 row-span-24 self-center px-3 text-sm text-slate-500">No scheduled maintenance for this day.</p>}
+            </div>
+          </div>
+        </div>
+      )}
 
       <div className="mt-5 rounded-xl border border-slate-700 bg-slate-900/80 p-3">
         {activeEvent ? (
@@ -304,7 +454,7 @@ const publicScheduleFiles = [
 function PublicScheduleDownloads() {
   return (
     <section className="editorial-card c151-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Download</p>
       <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Schedule files</h2>
@@ -329,107 +479,35 @@ function PublicScheduleDownloads() {
   );
 }
 
-function SubmissionEvidencePanel({
-  run,
-  busy,
-  notice,
-  onCreatePackage,
-  onRecordEvidence
-}: {
-  run: RunView | null;
-  busy: boolean;
-  notice: string;
-  onCreatePackage: () => Promise<void>;
-  onRecordEvidence: (packageId: string, payload: OrganiserEvidenceInput) => Promise<void>;
-}) {
-  const [attemptNumber, setAttemptNumber] = useState(1);
-  const [submittedAt, setSubmittedAt] = useState(() => new Date().toISOString().slice(0, 16));
-  const [outcome, setOutcome] = useState<OrganiserReportedOutcome>("unknown");
-  const [reference, setReference] = useState("");
-  const [digest, setDigest] = useState("");
-  const [note, setNote] = useState("");
-  const localClean = !run?.demo && run?.status === "succeeded" && run.validation_report?.hard_violations.length === 0;
-  const latestPackage = run?.submission_packages.at(-1);
-
-  if (!run) return null;
+function RecoveryOutcome({ run }: { run: RunView | null }) {
+  const diff = run?.schedule_diff;
+  if (!run || run.demo || !diff) return null;
+  const diagnostics = run.solver_diagnostics;
+  const changed = diff.placement_changes.filter((item) => item.kind !== "unchanged");
+  const label = diagnostics?.recovery_source === "reoptimized"
+    ? "Re-optimised"
+    : diagnostics?.recovery_source === "incumbent_not_worse"
+      ? "Kept equally good incumbent"
+      : diagnostics?.recovery_source === "incumbent_fallback"
+        ? "Safe incumbent fallback"
+        : "Recovery result";
 
   return (
-    <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 · Organiser evidence</p>
-      <h2 className="mt-1 text-xl font-bold text-white">Manual submission package</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-400">
-        Run {run.run_id.slice(0, 8)} · {run.status}. Local result: {run.validation_report?.status ?? "unavailable"}.
-      </p>
-      {run.validation_report && (
-        <p className="mt-2 text-xs leading-5 text-amber-100">
-          {run.validation_report.message} Organiser feedback recorded here remains unverified until a supported organiser report integration exists.
-        </p>
-      )}
-      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">Public demonstration runs cannot create submission packages, exports, or organiser evidence.</p>}
-      {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
-      {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
-
-      {!localClean ? (
-        <p className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-400">
-          Submission packages are available only after a locally clean succeeded run. Blocked Scenario B/C runs and failed candidates cannot be downloaded for submission.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-4">
-          <button
-            disabled={busy}
-            onClick={() => void onCreatePackage()}
-            className="rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-          >
-            Create manual upload ZIP
-          </button>
-
-          {run.submission_packages.map((submissionPackage) => (
-            <div key={submissionPackage.package_id} className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm">
-              <p className="font-semibold text-white">Package {submissionPackage.package_id.slice(0, 8)} · commit {submissionPackage.build_commit.slice(0, 12)}</p>
-              <div className="mt-2 flex flex-wrap gap-3 text-red-200">
-                <a href={forRailsApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
-                {submissionPackage.organiser_evidence && (
-                  <a href={forRailsApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
-                )}
-              </div>
-              {submissionPackage.organiser_evidence && (
-                <p className="mt-2 text-xs text-slate-300">Attempt {submissionPackage.organiser_evidence.attempt_number}: {submissionPackage.organiser_evidence.reported_outcome} (locally unverified).</p>
-              )}
-            </div>
-          ))}
-
-          {latestPackage && !latestPackage.organiser_evidence && (
-            <form
-              className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const submitted = new Date(submittedAt);
-                if (Number.isNaN(submitted.valueOf())) return;
-                void onRecordEvidence(latestPackage.package_id, {
-                  attempt_number: attemptNumber,
-                  submitted_at: submitted.toISOString(),
-                  reported_outcome: outcome,
-                  report_reference: reference.trim() || undefined,
-                  report_sha256: digest.trim() || undefined,
-                  note: note.trim() || undefined
-                });
-              }}
-            >
-              <p className="font-semibold text-amber-100">After the manual organiser upload</p>
-              <p className="mt-1 text-xs leading-5 text-slate-400">Record reference metadata only—do not upload screenshots or paste a raw organiser report.</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-slate-300">Attempt (1–5)<input value={attemptNumber} min="1" max="5" type="number" onChange={(event) => setAttemptNumber(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-                <label className="text-xs text-slate-300">Submitted at<input value={submittedAt} type="datetime-local" onChange={(event) => setSubmittedAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-                <label className="text-xs text-slate-300">Reported outcome<select value={outcome} onChange={(event) => setOutcome(event.target.value as OrganiserReportedOutcome)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"><option value="unknown">Unknown</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select></label>
-                <label className="text-xs text-slate-300">Report or screenshot reference<input value={reference} maxLength={500} onChange={(event) => setReference(event.target.value)} placeholder="e.g. organiser-result-1.png" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              </div>
-              <label className="mt-3 block text-xs text-slate-300">Optional SHA-256 digest<input value={digest} maxLength={64} onChange={(event) => setDigest(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              <label className="mt-3 block text-xs text-slate-300">Short note<textarea value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              <button disabled={busy} className="mt-3 rounded-xl border border-amber-300/50 bg-amber-300/10 px-4 py-2 font-bold text-amber-100 disabled:cursor-not-allowed disabled:text-slate-500">Record metadata</button>
-            </form>
-          )}
+    <section className="editorial-card c151-card mt-5 rounded-2xl border border-emerald-300/30 bg-emerald-300/5 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Recovery outcome</p>
+          <h2 className="section-heading mt-1 text-xl font-bold text-white">{label}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-300">Scenario C was compared with its baseline under the confirmed change. This local result remains unverified until the organiser checks these exact exports.</p>
         </div>
-      )}
+        <span className="rounded-full border border-emerald-300/35 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">{run.validation_report?.status ?? "unverified"}</span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Moved work</p><p className="mt-1 text-2xl font-bold text-white">{diff.moved_count}</p><p className="text-xs text-slate-400">placements changed</p></div>
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Kept work</p><p className="mt-1 text-2xl font-bold text-white">{diff.unchanged_count}</p><p className="text-xs text-slate-400">placements unchanged</p></div>
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Solver</p><p className="mt-1 text-lg font-bold text-white">{diagnostics?.status ?? "Recorded"}</p><p className="text-xs text-slate-400">{diagnostics ? `${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s` : "execution details unavailable"}</p></div>
+      </div>
+      {changed.length > 0 && <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Changed placements</p><ul className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs text-slate-300">{changed.slice(0, 25).map((item) => <li key={`${item.key.activity_id}-${item.key.access_seq}`}><b>{item.key.activity_id}</b> access {item.key.access_seq}: {item.kind}{item.changed_fields.length ? ` (${item.changed_fields.join(", ")})` : ""}</li>)}</ul>{changed.length > 25 && <p className="mt-2 text-xs text-slate-500">Showing 25 of {changed.length} changed placements.</p>}</div>}
     </section>
   );
 }
@@ -531,12 +609,16 @@ export default function App() {
     try {
       let current = await forRailsApi.createRun(scenario, runFiles);
       setRun(current);
-      for (let attempt = 0; attempt < 90 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
+      for (let attempt = 0; attempt < 330 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
         current = await forRailsApi.getRun(current.run_id);
         setRun(current);
       }
-      setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
+      const diagnostics = current.solver_diagnostics;
+      const solverEvidence = diagnostics
+        ? ` CP-SAT ${diagnostics.status} in ${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s.`
+        : "";
+      setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.${solverEvidence}`);
       setDemandFiles([]);
       setPage("overview");
     } catch (error) {
@@ -591,7 +673,19 @@ export default function App() {
     if (!run || runBusy) return;
     setRunBusy(true);
     try {
-      setRun(await forRailsApi.confirmRecoveryDraft(run.run_id, draftId));
+      let current = await forRailsApi.confirmRecoveryDraft(run.run_id, draftId);
+      setRun(current);
+      setRefreshNotice("Scenario C recovery is running with the confirmed controller changes.");
+      for (let attempt = 0; attempt < 330 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+        current = await forRailsApi.getRun(current.run_id);
+        setRun(current);
+      }
+      const diagnostics = current.solver_diagnostics;
+      const evidence = diagnostics
+        ? ` CP-SAT ${diagnostics.status} in ${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s.`
+        : "";
+      setRefreshNotice(`Scenario C recovery is ${current.status}.${evidence}`);
     } catch (error) {
       setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Recovery could not be started.");
     } finally {
@@ -599,43 +693,12 @@ export default function App() {
     }
   };
 
-  const createSubmissionPackage = async () => {
-    if (!run || runBusy) return;
-    setRunBusy(true);
-    try {
-      const submissionPackage = await forRailsApi.createSubmissionPackage(run.run_id);
-      setRun((current) => current ? { ...current, submission_packages: [...current.submission_packages, submissionPackage] } : current);
-      setRefreshNotice("Manual upload ZIP created. Download it, submit it on the organiser website, then record reference metadata.");
-    } catch (error) {
-      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not create the submission package.");
-    } finally {
-      setRunBusy(false);
-    }
-  };
-
-  const recordEvidence = async (packageId: string, payload: OrganiserEvidenceInput) => {
-    if (!run || runBusy) return;
-    setRunBusy(true);
-    try {
-      const updatedPackage = await forRailsApi.recordOrganiserEvidence(run.run_id, packageId, payload);
-      setRun((current) => current ? {
-        ...current,
-        submission_packages: current.submission_packages.map((item) => item.package_id === packageId ? updatedPackage : item)
-      } : current);
-      setRefreshNotice("Organiser metadata was recorded for this live run. Download the evidence JSON and keep it outside the repository.");
-    } catch (error) {
-      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not record organiser metadata.");
-    } finally {
-      setRunBusy(false);
-    }
-  };
-
   return (
     <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-60">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[1]">
         <TrainScene />
       </div>
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
         {stars.map(([left, top, size, delay]) => (
           <span key={`${left}-${top}`} className="twinkle-star" style={{ left, top, width: size, height: size, animationDelay: delay }} />
         ))}
@@ -672,14 +735,8 @@ export default function App() {
                 onEventHover={setActiveEvent}
               />
             </div>
-            <SubmissionEvidencePanel
-              run={run}
-              busy={runBusy}
-              notice=""
-              onCreatePackage={createSubmissionPackage}
-              onRecordEvidence={recordEvidence}
-            />
             <PublicScheduleDownloads />
+            <RecoveryOutcome run={run} />
             <RecoverySandbox
               run={run}
               capabilities={capabilities}
@@ -695,7 +752,7 @@ export default function App() {
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Build schedule</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
               <div className="mt-4">
@@ -714,23 +771,22 @@ export default function App() {
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Recovery</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Recovery</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Scenario C recovery is available after a successful live C run. The public fixture remains a separate, fixed demonstration.</p>
               <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
               <p className="mt-3 text-xs text-slate-500">{capabilities?.recovery.message ?? "Checking recovery capability…"}</p>
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">06 · Optimise</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Optimise</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
                 {(["A", "B", "C"] as Scenario[]).map((option) => (
                   <button
                     key={option}
-                    disabled={!capabilities?.scenarios.find((item) => item.scenario === option)?.available || runBusy}
-                    title={capabilities?.scenarios.find((item) => item.scenario === option)?.message}
+                    disabled={runBusy}
                     onClick={() => setScenario(option)}
                     className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                   >
@@ -742,8 +798,10 @@ export default function App() {
               <button
                 disabled={!scheduleInputReady || runBusy || !capabilities?.scenarios.find((item) => item.scenario === scenario)?.available}
                 onClick={() => void startRun()}
-                className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+                aria-busy={runBusy}
+                className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
               >
+                {runBusy && <span aria-hidden="true" className="h-4 w-4 animate-spin rounded-full border-2 border-white/35 border-t-white" />}
                 {runBusy ? "Running schedule…" : "Run schedule"}
               </button>
               <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>

@@ -12,7 +12,7 @@ This section supersedes older implementation-status and score statements below. 
 
 The local validator now mirrors the organiser's contract-level overrun calculation: a contract's final overrun is applied to every activity-priority nudge in that contract. It reports the same 608.3/50.0/158.6 scores with zero locally observable hard violations. Any regenerated output remains `unverified` until the organiser validates those exact files again.
 
-The direct `CpSatRailSolver` retains A/B/C and recovery support, while the hosted API currently advertises only its production-gated Scenario A path. A locally improved candidate must not replace an organiser-confirmed file solely because its local score is lower. The experimental expanded possession-colour search was rejected by the organiser for cross-group closure-zone conflicts and is not an approved submission path.
+The direct `CpSatRailSolver` retains A/B/C and recovery support. The hosted API now exposes fresh A/B/C runs through the same CP-SAT adapter with a 300-second budget, and exposes confirmed live recovery for Scenario C only. Every fresh or recovered candidate must still pass local preflight and remains `unverified` until the organiser validates its exact exports. A locally improved candidate must not replace an organiser-confirmed file solely because its local score is lower. The experimental expanded possession-colour search was rejected by the organiser for cross-group closure-zone conflicts and is not an approved submission path.
 
 ## Scenario C dynamic recovery pipeline — implemented 2026-09-19
 
@@ -44,7 +44,7 @@ Persons 1/2 reran A, B, and C on the public instance with a 420-second cap, two 
 
 ## Current implementation workstream
 
-The active Person 1/2 solver includes direct A/B/C solving plus the standalone Scenario C dynamic-recovery command above. The hosted API remains separately production-gated; this CLI pipeline does not claim that the fixture-only web recovery sandbox is a live optimiser.
+The active Person 1/2 solver includes direct A/B/C solving plus the standalone Scenario C dynamic-recovery command above. Person 4's hosted API now connects those delivered paths, while preserving the separate fixture-only web replay as a visibly non-optimised demo.
 
 The solver must use the existing domain/ingestion/export/preflight contracts, read the planning horizon from `06_PARAMETERS.csv`, generate the deterministic three-file output for the selected scenario, and integrate with the existing backend adapter boundary. The organiser validator is not present as a runnable package in this repository; local preflight results remain unverified until that validator is run.
 
@@ -382,8 +382,8 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Versioned contracts | Complete | `/api/v1` Pydantic request/response models implement `InputInstance`, `Schedule`, `ValidationReport`, `ScenarioChange`, and `ScheduleDiff`. API errors carry a request ID, stable code, message, and field errors. |
 | Eight-file intake | Complete | `POST /api/v1/runs` accepts exactly the eight official filenames, parses the typed CSV records synchronously, and returns actionable package/schema errors. Uploaded inputs exist only in process memory after parsing. |
 | Run lifecycle | Complete shell | In-memory runs support `accepted`, `running`, `succeeded`, `failed`, and `blocked`. With no solver connected, a valid upload becomes `blocked` with `solver_unavailable`; it never receives an invented schedule. |
-| Solver integration seam | Complete for Scenario A | `RunService` passes one canonical `PreparedInstance`, scenario, and optional confirmed `ScenarioChange` to `CpSatSolverAdapter`, which returns the canonical schedule. Scenario B/C return `blocked/scenario_unavailable`; they never fall back to A. |
-| Scenario A API run gate | Complete | Scenario A solver input/topology failures return `failed/solver_input_invalid`; unexpected solver errors return `failed/solver_failed`. A candidate is locally preflighted before success. Hard findings retain schedule/report evidence but return `failed/preflight_failed`, create no exports, and download attempts return `409/preflight_not_clean`. |
+| Solver integration seam | Complete for A/B/C | `RunService` passes one canonical `PreparedInstance`, selected scenario, and optional confirmed `ScenarioChange`/baseline to `CpSatRailSolverAdapter`. It accepts only `FEASIBLE` or `OPTIMAL` candidates; `UNKNOWN` maps to `failed/solver_timeout`, never to another scenario. |
+| A/B/C API run gate | Complete | Solver input/topology failures return `failed/solver_input_invalid`; unexpected solver errors return `failed/solver_failed`. A candidate is locally preflighted before success. Hard findings retain schedule/report evidence but return `failed/preflight_failed`, create no exports, and download attempts return `409/preflight_not_clean`. API evidence includes CP-SAT status, elapsed time, and the 300-second limit. |
 | Shared preprocessing handoff | Complete | `app/domain/preprocessing.py` is the sole owner of routes, base/closure footprints, buffers, Live mirroring, H01–H02 crossover, planning calendar, and cross-file checks. Each API run prepares once and shares that representation with CP-SAT and local preflight. |
 | Export integration | Complete for locally clean candidates | Only a zero-hard-violation local candidate produces the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory; a clean result is still `unverified`. |
 | Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
@@ -391,10 +391,10 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | R4.4 organiser submission evidence workflow | Complete | Locally clean succeeded runs create an ephemeral ZIP with the three official CSVs and immutable checksum manifest. Structured manual organiser metadata is downloadable as evidence JSON, never uploaded as files, never committed for hidden instances, and never changes `unverified`/`feasible=null`. |
 | Closure derivation | Implemented from recorded organiser evidence | Buffer, Live opposite-bound, H01/H02 cross-line footprints, and same-week other-group closure rejection are derived. The local report reproduces every subject/week in the 62-error Scenario C website report. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
-| Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
+| Scenario C recovery orchestration | Complete | A recovery request requires an explicit confirmation timestamp and matching base schedule/scenario. Confirmed Scenario C supply overrides, locks, and baseline schedule flow into the recovery model; the returned candidate is preflighted against changed supply and receives a deterministic `ScheduleDiff`. A/B recovery remains blocked. |
 | R4.3/R4.5A public recovery sandbox | Complete integration-ready demo | `GET /api/v1/capabilities` exposes the real scenario and recovery boundaries. A separate, checksummed public-fixture demo replays the published Scenario A schedule and a fixed reviewed disruption. It is visibly `demo=true`, locally clean but `unverified`, and cannot export, package, record organiser evidence, or enter the real solver path. |
-| Recovery review inputs | Complete shell | A completed run can compare a replacement `04_LOCATION_SUPPLY.csv` against its in-memory base input and produce an editable, unconfirmed capacity/lock draft. Gemini text parsing remains public-demo-only; real re-optimisation still waits for the recovery solver. |
-| R4.8A public draft parser | Complete integration-ready demo | A bounded, Vertex-backed typed draft endpoint is available only for that public demo. It sends identifiers and controller text only, validates every reference deterministically, stores drafts only in the live run, and permits fixed-demo replay only for a `ready` draft. It cannot invoke solver, validation, export, submission, or real recovery. |
+| Recovery review inputs | Complete | A completed run can compare a replacement `04_LOCATION_SUPPLY.csv` against its in-memory base input and produce an editable, unconfirmed capacity/lock draft. Confirmed Scenario C drafts dispatch real re-optimisation. |
+| R4.8B live C draft parser | Complete pending Cloud smoke | A bounded Vertex draft endpoint supports the public demo and successful live Scenario C runs. It receives only controller text, capped supply/placement identifiers, and planning horizon; deterministic code validates every reference before controller confirmation can dispatch recovery. A/B remain unavailable. |
 | Regression and container checks | Complete for the implemented scenario gates | Pytest covers upload failures, lifecycle states, real solver execution, unsupported-scenario handling, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
 | Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
 
@@ -412,19 +412,13 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Done when:** organiser evidence confirms the unresolved closure timing, report/tag, and score semantics, or each remaining ambiguity is explicitly documented as uncheckable from the output CSVs.
 
-#### R4.3 — Extend the run gate beyond Scenario A (integration readiness complete)
+#### R4.3 — A/B/C run gate and Scenario-C recovery connection (complete)
 
-**Dependency:** Person 2's `SolverAdapter` implementation and Person 1's preprocessing output.
-
-- Integrate Person 2's Scenario B and C policies through the same adapter; unsupported scenarios must remain blocked until then.
-- The capability contract, disabled controller actions, and fake-adapter boundary now make that extension explicit without exposing dummy B/C schedules. Production B/C remain `blocked/scenario_unavailable`.
-- Record CP-SAT status and diagnostics in the run evidence; accept only `FEASIBLE` or `OPTIMAL` candidates from the solver.
-- Add bounded solver timeout, safe exception handling, temporary-export cleanup, and explicit expired/restarted-run behaviour.
-- Keep the existing local-preflight gate: hard-invalid candidates are diagnostic-only, never ready submissions.
-
-**Scenario A done:** a real public-instance Scenario A run travels through one API path and produces a locally clean, unverified export set with reproducible evidence.
-
-**Done when:** the same truthful run/evidence/export behaviour is implemented for B and C with their approved policies and solver diagnostics.
+- The hosted adapter accepts all delivered A/B/C policies using the shared `PreparedInstance`, with a 300-second maximum solve budget and no scenario fallback.
+- Only `FEASIBLE` or `OPTIMAL` candidates may reach local preflight; timeout is `failed/solver_timeout`, and other solver faults are `failed/solver_failed`.
+- The capability API and controller enable A/B/C selection and expose live recovery only for successful, non-demo Scenario C runs.
+- Confirmed Scenario C drafts pass their supply overrides, placement locks, and baseline into the recovery model. A locally invalid changed-input candidate cannot export. A valid incumbent is retained only when it remains clean under the changed supply.
+- Each recovery returns a deterministic before/after `ScheduleDiff` plus solver diagnostics. Local reports remain `unverified`; organiser validation is still the only source of `verified`/`feasible=true`.
 
 #### R4.4 — Organiser-website evidence workflow (complete)
 
@@ -436,18 +430,14 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Complete:** R4.4 packages are reproducible within the live process and visibly separate local preflight from user-recorded organiser metadata. Official report parsing and verified status remain organiser-dependent work.
 
-#### R4.5 — Finish real recovery integration (R4.5A demo complete)
+#### R4.5 — Scenario-C real recovery integration (complete)
 
-**Dependency:** Person 2's locked-work recovery model and `ScheduleDiff` implementation; Person 3's confirmation UI.
+**Scope:** confirmed live Scenario C recovery only; the fixed public replay remains a non-optimised demo and A/B recovery stays unavailable.
 
-**R4.5A complete:** the controller can review a fixed public supply reduction and locks, inspect an unchanged deterministic before/after replay, and see the exact future integration boundary. This is a public demonstration only, not optimisation and not a substitute for a recovery solver.
-
-- Pass only confirmed supply overrides and locked placement keys to the recovery solver.
-- Validate the recovered result with the same preflight and organiser-evidence lifecycle as a baseline run.
-- Return deterministic `ScheduleDiff`, score deltas, completion deltas, preserved-work counts, and change-budget evidence.
-- Test rejected drafts, invalid locks, no-candidate bases, solver failures, and no workload loss during recovery.
-
-**Done when:** a controller-confirmed disruption yields a fresh, evidence-backed recovered schedule without silently moving locked work.
+- Confirmed supply overrides, locked placement keys, and the baseline schedule pass to the delivered recovery model.
+- The recovered candidate is checked against changed supply through the same local-preflight and export gate as a fresh run.
+- The API returns deterministic `ScheduleDiff`, score/completion deltas, locked-work evidence, and whether the model re-optimised or safely retained its incumbent.
+- No candidate means no export unless the incumbent passes the changed-input preflight; all outputs remain `unverified` pending organiser validation.
 
 #### R4.6 — Add grounded LLM tools last
 
@@ -461,9 +451,10 @@ This is the delivery checklist for the custom-validator, integration, and ground
 **Done when:** LLM output is useful explanation around deterministic evidence, never a second scheduler or validator.
 
 **R4.6 implementation status:** The read-only evidence/API/UI and Vertex
-adapter are implemented. Production deployment remains gated on creating the
-dedicated Cloud Run service identity and performing the public-fixture-only
-smoke test; no hidden instance is used for deployment validation.
+adapter are implemented. The Cloud Run release check verifies the dedicated
+service identity, bounded public-fixture evidence, readable responses, and safe
+provider-failure handling. Organiser validation is always a manual external
+workflow; this app never assigns organiser verification.
 
 #### R4.7 — Deploy and rehearse
 
@@ -476,11 +467,11 @@ smoke test; no hidden instance is used for deployment validation.
 
 **Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
 
-#### R4.8 — Bonus: typed disruption request parser (R4.8A public demo complete)
+#### R4.8 — Typed disruption request parser (R4.8B live Scenario C complete)
 
 **Dependency:** R4.5 recovery integration, stable `ScenarioChange` validation, and the grounded-tool safeguards in R4.6.
 
-**R4.8A complete:** public-fixture controller text can become an unconfirmed, schema-checked draft with assumptions, unresolved references, and field errors. It can only confirm the fixed public replay. Extending it to a hidden/live run remains blocked on the real recovery adapter.
+**R4.8B complete:** public-fixture and successful live Scenario C controller text can become an unconfirmed, schema-checked draft with assumptions, unresolved references, and field errors. Live calls send only bounded identifiers and controller text to Vertex; they cannot expose raw CSVs, complete schedules, exports, checksums, or organiser data.
 
 - Add an LLM-backed, schema-constrained endpoint that translates a controller's hand-typed disruption request into a **draft** `ScenarioChange` (for example, a reduced location supply, a requested lock, or a stated rationale).
 - Show the parsed fields, assumptions, unresolved references, and validation errors to the controller before any action is available.
@@ -489,13 +480,13 @@ smoke test; no hidden instance is used for deployment validation.
 - Do not allow the LLM to assign a placement, alter priorities or railway rules, claim feasibility, bypass locked-work checks, or execute a change itself.
 - Add adversarial tests for ambiguous language, invented IDs, conflicting requests, missing confirmation, and attempts to coerce a feasibility claim or direct schedule mutation.
 
-**Done when:** a controller can type a disruption in plain language, receive a transparent draft change for review, and safely pass only an explicitly confirmed, deterministic `ScenarioChange` to recovery.
+**Done when:** a controller can type a disruption in plain language, receive a transparent draft change for review, and safely pass only an explicitly confirmed, deterministic Scenario C change to recovery.
 
 ### Person 4 sequencing and dependencies
 
-1. **Now:** maintain the Scenario A API/preflight tests, agree the shared preprocessing interface, and prepare the organiser-evidence manifest format.
-2. **After Person 1/2 Scenario B/C:** extend the real-solver run/export gate to those scenarios.
-3. **After first organiser evidence:** close validator ambiguities and complete rule fixtures.
-4. **After A/B/C and recovery are stable:** add grounded LLM tools and Cloud Run deployment.
+1. **Now:** maintain the A/B/C API/preflight and Scenario-C recovery regression gates, including timeout and changed-supply cases.
+2. **After first organiser evidence:** close validator ambiguities and complete rule fixtures.
+3. **After organiser validation of regenerated exports:** retain the exact evidence with the submission package; do not upgrade local results by inference.
+4. **Before release:** rehearse a public-fixture and authorised hidden-instance upload without persistence, then verify Cloud Run's timeout and transient-run behaviour.
 
 Person 4 does **not** build a competing preprocessor or scheduler. Person 4 integrates and validates the canonical output from Persons 1/2, gives Person 3 stable evidence, and preserves the distinction between local preflight and organiser verification.

@@ -8,6 +8,7 @@ testable and prevents Gemini from becoming a second scheduler.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from datetime import datetime, timezone
 from typing import Protocol
@@ -18,6 +19,7 @@ from app.api.schemas import CopilotMode, CopilotResponse, EvidenceEnvelope
 
 
 DISCLAIMER = "Organiser verification is unavailable or unverified; this explanation does not establish feasibility."
+logger = logging.getLogger(__name__)
 
 
 class CopilotUnavailable(RuntimeError):
@@ -25,7 +27,11 @@ class CopilotUnavailable(RuntimeError):
 
 
 class _Narrative(BaseModel):
-    model_config = ConfigDict(extra="forbid")
+    # Vertex can add harmless schema metadata (for example a mode label) on
+    # some response paths.  We keep the required answer and optional
+    # schedule binding strict, then discard anything else rather than failing
+    # a controller-facing explanation for an unused provider field.
+    model_config = ConfigDict(extra="ignore")
 
     answer: str = Field(min_length=1, max_length=2000)
     # The API attaches the exact server-built EvidenceEnvelope to every
@@ -49,6 +55,26 @@ class VertexGeminiGenerator:
         self.project = os.getenv("FOR_RAILS_GCP_PROJECT", "").strip()
         self.location = os.getenv("FOR_RAILS_VERTEX_LOCATION", "global").strip() or "global"
         self.model_name = os.getenv("FOR_RAILS_GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+
+    @staticmethod
+    def _final_json_text(response: object) -> str:
+        """Extract Gemini's final non-thinking JSON part.
+
+        Gemini 2.5 may emit an internal thought part before its final answer.
+        ``response.text`` is convenient for ordinary prose, but it can be
+        empty or contain more than the final JSON boundary in that case.  Only
+        the final non-thought text is eligible for the strict JSON validation
+        below.  No prompt or model text is logged or retained.
+        """
+
+        text_parts: list[str] = []
+        for candidate in getattr(response, "candidates", None) or []:
+            content = getattr(candidate, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                text = getattr(part, "text", None)
+                if isinstance(text, str) and text.strip() and not getattr(part, "thought", False):
+                    text_parts.append(text)
+        return text_parts[-1] if text_parts else (getattr(response, "text", None) or "")
 
     def generate(self, evidence: EvidenceEnvelope, mode: CopilotMode) -> str:
         if not self.enabled or not self.project:
@@ -94,7 +120,7 @@ class VertexGeminiGenerator:
                 config=types.GenerateContentConfig(
                     system_instruction=instruction,
                     temperature=0.2,
-                    max_output_tokens=600,
+                    max_output_tokens=800,
                     response_mime_type="application/json",
                     # Ask Vertex to enforce the bounded response shape before
                     # it reaches our second, independent Pydantic check.  A
@@ -115,8 +141,13 @@ class VertexGeminiGenerator:
                 return json.dumps(parsed, separators=(",", ":"))
             if isinstance(parsed, str):
                 return parsed
-            return response.text or ""
+            return self._final_json_text(response)
         except Exception as error:  # Deliberately do not expose provider payloads or prompt data.
+            logger.warning(
+                "vertex_copilot_generation_failed error_type=%s status=%s",
+                type(error).__name__,
+                getattr(error, "status", getattr(error, "code", None)),
+            )
             raise CopilotUnavailable("Vertex AI could not produce a grounded response.") from error
 
 
@@ -130,6 +161,10 @@ class CopilotService:
         except CopilotUnavailable:
             raise
         except Exception as error:
+            # Do not log evidence, prompts, or Gemini text: production logs
+            # must not become a second store for schedule data.  The error
+            # class is enough to identify an SDK-shape regression.
+            logger.warning("vertex_copilot_invalid_response error_type=%s", type(error).__name__)
             raise CopilotUnavailable("Vertex AI returned an invalid grounded response.") from error
         if (
             (decoded.schedule_id is not None and decoded.schedule_id != evidence.schedule_id)

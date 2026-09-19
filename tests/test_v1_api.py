@@ -7,7 +7,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.api.run_service import RunService, SolverOutput
-from app.api.schemas import ScenarioChange, ValidationReport, ValidationStatus
+from app.api.schemas import ScenarioChange, SolverDiagnostics, ValidationReport, ValidationStatus
+from app.api.solver_contract import SolverTimedOut
 from app.domain.models import (
     AccessAssignment,
     ContractResult,
@@ -23,8 +24,7 @@ from app.validation.preflight import load_submission
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DATA = ROOT / "data" / "public-instance"
-SAMPLE_SUBMISSION = PUBLIC_DATA / "sample-submission"
-CLEAN_SCENARIO_A = ROOT / "sample_submission" / "scenario_a"
+SOLVER_OUTPUT = ROOT / "solver_output"
 
 
 def public_files(exclude: str | None = None, replacement: tuple[str, bytes] | None = None) -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -49,17 +49,20 @@ def candidate_schedule(scenario: Scenario) -> ScenarioSchedule:
 
 
 class CleanSolver:
-    supported_scenarios = (Scenario.A,)
+    supported_scenarios = (Scenario.A, Scenario.B, Scenario.C)
+    recovery_scenarios = (Scenario.C,)
     supports_recovery = True
 
     def __init__(self) -> None:
         self.changes: list[ScenarioChange | None] = []
         self.prepared_instances: list[PreparedInstance] = []
+        self.baselines: list[ScenarioSchedule | None] = []
 
-    def solve(self, prepared_instance, scenario, scenario_change=None) -> SolverOutput:
+    def solve(self, prepared_instance, scenario, scenario_change=None, baseline_schedule=None) -> SolverOutput:
         self.prepared_instances.append(prepared_instance)
         self.changes.append(scenario_change)
-        schedule = load_submission(CLEAN_SCENARIO_A)
+        self.baselines.append(baseline_schedule)
+        schedule = load_submission(SOLVER_OUTPUT / f"scenario_{scenario.value.lower()}")
         assert schedule.scenario is scenario
         return SolverOutput(schedule=schedule)
 
@@ -74,6 +77,18 @@ class FailingSolver:
         raise RuntimeError("test solver failure")
 
 
+class TimedOutSolver:
+    supported_scenarios = (Scenario.A, Scenario.B, Scenario.C)
+    last_diagnostics = SolverDiagnostics(
+        status="UNKNOWN",
+        wall_time_seconds=300.0,
+        time_limit_seconds=300.0,
+    )
+
+    def solve(self, prepared_instance, scenario, scenario_change=None, baseline_schedule=None) -> SolverOutput:
+        raise SolverTimedOut("test solver reached its approved time limit")
+
+
 def set_run_service(solver=None) -> RunService:
     previous = getattr(app.state, "run_service", None)
     if previous:
@@ -83,8 +98,8 @@ def set_run_service(solver=None) -> RunService:
     return service
 
 
-def create_public_run(client: TestClient) -> str:
-    response = client.post("/api/v1/runs", data={"scenario": "A"}, files=public_files())
+def create_public_run(client: TestClient, scenario: Scenario = Scenario.A) -> str:
+    response = client.post("/api/v1/runs", data={"scenario": scenario.value}, files=public_files())
     assert response.status_code == 202
     return response.json()["run_id"]
 
@@ -214,21 +229,23 @@ def test_invalid_candidate_fails_preflight_retains_evidence_and_blocks_exports()
     assert export.json()["error"]["code"] == "preflight_not_clean"
 
 
-def test_unimplemented_scenario_b_is_blocked_not_silently_solved_as_a() -> None:
-    set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
+def test_capabilities_advertise_delivered_a_b_and_c_scenarios() -> None:
+    set_run_service(CleanSolver())
     client = TestClient(app)
 
-    response = client.post("/api/v1/runs", data={"scenario": "B"}, files=public_files())
-    assert response.status_code == 202
-    result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
-
-    assert result.status_code == 200
-    assert result.json()["status"] == "blocked"
-    assert result.json()["problem"]["code"] == "scenario_unavailable"
+    response = client.get("/api/v1/capabilities")
+    assert response.status_code == 200
+    scenarios = {item["scenario"]: item for item in response.json()["scenarios"]}
+    assert {scenario: details["available"] for scenario, details in scenarios.items()} == {
+        "A": True,
+        "B": True,
+        "C": True,
+    }
+    assert response.json()["recovery"]["supported_scenarios"] == ["C"]
 
 
 def test_scenario_c_is_supported_and_never_falls_back_to_scenario_a() -> None:
-    set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
+    set_run_service(CleanSolver())
     client = TestClient(app)
 
     response = client.post("/api/v1/runs", data={"scenario": "C"}, files=public_files())
@@ -236,8 +253,26 @@ def test_scenario_c_is_supported_and_never_falls_back_to_scenario_a() -> None:
     result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
 
     assert result.status_code == 200
-    assert result.json()["status"] != "blocked"
-    assert result.json().get("problem", {}).get("code") != "scenario_unavailable"
+    assert result.json()["status"] == "succeeded"
+    assert result.json()["schedule"]["scenario"] == "C"
+    assert result.json()["validation_report"]["hard_violations"] == []
+
+
+@pytest.mark.parametrize("scenario", [Scenario.A, Scenario.B, Scenario.C])
+def test_all_scenarios_use_their_own_clean_candidate_and_exports(scenario: Scenario) -> None:
+    set_run_service(CleanSolver())
+    client = TestClient(app)
+
+    run_id = create_public_run(client, scenario)
+    result = client.get(f"/api/v1/runs/{run_id}")
+
+    assert result.status_code == 200
+    assert result.json()["status"] == "succeeded"
+    assert result.json()["schedule"]["scenario"] == scenario.value
+    assert result.json()["validation_report"]["status"] == "unverified"
+    for filename in ("SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "RESULTS.csv"):
+        export = client.get(f"/api/v1/runs/{run_id}/exports/{filename}")
+        assert export.status_code == 200
 
 
 def test_solver_preprocessing_failure_is_reported_without_falling_back() -> None:
@@ -293,6 +328,26 @@ def test_solver_failure_is_a_failed_run() -> None:
     assert result.json()["problem"]["code"] == "solver_failed"
 
 
+def test_solver_timeout_is_failed_with_diagnostics_and_no_exports() -> None:
+    set_run_service(TimedOutSolver())
+    client = TestClient(app)
+
+    run_id = create_public_run(client, Scenario.B)
+    result = client.get(f"/api/v1/runs/{run_id}")
+
+    assert result.status_code == 200
+    body = result.json()
+    assert body["status"] == "failed"
+    assert body["problem"]["code"] == "solver_timeout"
+    assert body["solver_diagnostics"] == {
+        "status": "UNKNOWN",
+        "wall_time_seconds": 300.0,
+        "time_limit_seconds": 300.0,
+        "recovery_source": None,
+    }
+    assert client.get(f"/api/v1/runs/{run_id}/exports/SCHEDULE_ACCESS.csv").status_code == 409
+
+
 def test_cleared_in_memory_run_is_not_retrievable() -> None:
     service = set_run_service()
     client = TestClient(app)
@@ -317,14 +372,14 @@ def test_recovery_requires_confirmation_and_preserves_change_for_adapter() -> No
     solver = CleanSolver()
     set_run_service(solver)
     client = TestClient(app)
-    base_run_id = create_public_run(client)
+    base_run_id = create_public_run(client, Scenario.C)
     base = client.get(f"/api/v1/runs/{base_run_id}").json()
     schedule_id = base["schedule"]["schedule_id"]
 
     draft = {
         "change_id": "draft-1",
         "base_schedule_id": schedule_id,
-        "scenario": "A",
+        "scenario": "C",
         "requested_by": "controller",
     }
     unconfirmed = client.post(f"/api/v1/runs/{base_run_id}/recovery", json=draft)
@@ -336,12 +391,16 @@ def test_recovery_requires_confirmation_and_preserves_change_for_adapter() -> No
         "change_id": "confirmed-1",
         "confirmed_at": datetime.now(timezone.utc).isoformat(),
         "locked_placements": [{"activity_id": "A001", "access_seq": 1}],
-        "supply_overrides": [{"location_id": "SEC:ALP:S01_S02:EB", "week": 1, "supply_capacity": 1}],
+        "supply_overrides": [{"location_id": "SEC:ALP:S01_S02:EB", "week": 1, "supply_capacity": 9}],
     }
     recovery = client.post(f"/api/v1/runs/{base_run_id}/recovery", json=confirmed)
     assert recovery.status_code == 202
     recovery_id = recovery.json()["run_id"]
     recovered = client.get(f"/api/v1/runs/{recovery_id}").json()
     assert recovered["status"] == "succeeded"
+    assert recovered["schedule"]["scenario"] == "C"
+    assert recovered["solver_diagnostics"] is None
     assert solver.changes[-1] is not None
+    assert solver.baselines[-1] is not None
+    assert solver.baselines[-1].scenario is Scenario.C
     assert solver.changes[-1].locked_placements[0].activity_id == "A001"

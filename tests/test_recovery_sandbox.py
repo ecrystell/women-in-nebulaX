@@ -5,14 +5,16 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.ai.disruption_drafts import DisruptionDraftService
-from app.api.run_service import RunService
+from app.ai.disruption_drafts import DisruptionDraftService, VertexDraftGenerator
+from app.api.run_service import RunService, SolverOutput
+from app.domain.models import Scenario
 from app.main import app
-from app.solver.adapter import CpSatSolverAdapter
+from app.validation.preflight import load_submission
 
 
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DATA = ROOT / "data" / "public-instance"
+SOLVER_OUTPUT = ROOT / "solver_output"
 
 
 class StubDraftGenerator:
@@ -27,11 +29,39 @@ class StubDraftGenerator:
         return self.payload if isinstance(self.payload, str) else json.dumps(self.payload)
 
 
+def test_vertex_json_extraction_ignores_thoughts_and_markdown_fences() -> None:
+    class Part:
+        def __init__(self, text: str, *, thought: bool = False) -> None:
+            self.text = text
+            self.thought = thought
+
+    class Candidate:
+        class Content:
+            parts = [Part("internal reasoning", thought=True), Part("```json\n{\"supply_overrides\":[]}\n```")]
+
+        content = Content()
+
+    class Response:
+        candidates = [Candidate()]
+        text = "not the final JSON boundary"
+
+    assert VertexDraftGenerator._final_json_text(Response()) == '{"supply_overrides":[]}'
+
+
+class FixtureSolver:
+    supported_scenarios = (Scenario.A, Scenario.B, Scenario.C)
+    recovery_scenarios = (Scenario.C,)
+    supports_recovery = True
+
+    def solve(self, prepared_instance, scenario, scenario_change=None, baseline_schedule=None) -> SolverOutput:
+        return SolverOutput(schedule=load_submission(SOLVER_OUTPUT / f"scenario_{scenario.value.lower()}"))
+
+
 def set_services(generator: StubDraftGenerator) -> None:
     previous = getattr(app.state, "run_service", None)
     if previous:
         previous.store.clear()
-    app.state.run_service = RunService(solver=CpSatSolverAdapter(time_limit_seconds=1))
+    app.state.run_service = RunService(solver=FixtureSolver())
     app.state.disruption_draft_service = DisruptionDraftService(generator)
 
 
@@ -70,16 +100,13 @@ def test_capabilities_and_public_demo_are_explicitly_separate_from_live_runs() -
     body = capabilities.json()
     scenarios = {item["scenario"]: item for item in body["scenarios"]}
     assert scenarios["A"]["available"] is True
-    assert scenarios["B"] == {
-        "scenario": "B",
-        "available": False,
-        "code": "scenario_unavailable",
-        "message": scenarios["B"]["message"],
-    }
-    assert scenarios["C"]["available"] is False
-    assert body["recovery"]["code"] == "recovery_solver_unavailable"
+    assert scenarios["B"]["available"] is True
+    assert scenarios["C"]["available"] is True
+    assert body["recovery"]["available"] is True
+    assert body["recovery"]["supported_scenarios"] == ["C"]
     assert body["public_demo_recovery"]["available"] is True
     assert body["disruption_drafts"]["available"] is True
+    assert body["disruption_drafts"]["supported_scenarios"] == ["C"]
 
     demo = create_demo(client)
     assert demo["demo"] is True
@@ -110,7 +137,7 @@ def test_capabilities_and_public_demo_are_explicitly_separate_from_live_runs() -
     assert replay_body["scenario_change"]["locked_placements"]
 
 
-def test_draft_parser_is_public_only_bounded_and_requires_a_ready_draft_for_confirmation() -> None:
+def test_public_draft_parser_uses_bounded_context_and_requires_a_ready_draft_for_confirmation() -> None:
     generator = StubDraftGenerator(ready_payload())
     set_services(generator)
     client = TestClient(app)
@@ -129,7 +156,6 @@ def test_draft_parser_is_public_only_bounded_and_requires_a_ready_draft_for_conf
     assert set(generator.context) == {
         "request",
         "scenario",
-        "schedule_id",
         "horizon_weeks",
         "valid_supply_locations",
         "valid_placement_keys",
@@ -138,6 +164,7 @@ def test_draft_parser_is_public_only_bounded_and_requires_a_ready_draft_for_conf
     assert "SCHEDULE_ACCESS.csv" not in transmitted
     assert "checksum" not in transmitted.lower()
     assert "organiser" not in transmitted.lower()
+    assert "schedule_id" not in transmitted
 
     confirmed = client.post(
         f"/api/v1/runs/{run_id}/demo-recovery", json={"draft_id": draft["draft_id"]}
@@ -167,7 +194,7 @@ def test_draft_parser_is_public_only_bounded_and_requires_a_ready_draft_for_conf
     assert rejected_confirmation.json()["error"]["code"] == "disruption_draft_not_ready"
 
 
-def test_draft_parser_rejects_live_uploads_and_unsafe_or_invalid_model_output() -> None:
+def test_draft_parser_allows_only_live_c_and_reuses_confirmed_recovery_path() -> None:
     generator = StubDraftGenerator(ready_payload())
     set_services(generator)
     client = TestClient(app)
@@ -178,20 +205,56 @@ def test_draft_parser_rejects_live_uploads_and_unsafe_or_invalid_model_output() 
         f"/api/v1/runs/{live.json()['run_id']}/disruption-drafts", json={"text": "reduce supply"}
     )
     assert forbidden_live.status_code == 409
-    assert forbidden_live.json()["error"]["code"] == "public_demo_only"
+    assert forbidden_live.json()["error"]["code"] == "disruption_draft_unavailable"
 
+    live_view = client.get(f"/api/v1/runs/{live.json()['run_id']}")
+    assert live_view.status_code == 200
+    assert live_view.json()["status"] == "succeeded"
     real_recovery = client.post(
         f"/api/v1/runs/{live.json()['run_id']}/recovery",
         json={
-            "change_id": "confirmed-but-unavailable",
-            "base_schedule_id": "not-used-while-recovery-is-unavailable",
+            "change_id": "confirmed-but-wrong-scenario",
+            "base_schedule_id": live_view.json()["schedule"]["schedule_id"],
             "scenario": "A",
             "requested_by": "controller",
             "confirmed_at": "2026-09-19T00:00:00Z",
         },
     )
     assert real_recovery.status_code == 409
-    assert real_recovery.json()["error"]["code"] == "recovery_solver_unavailable"
+    assert real_recovery.json()["error"]["code"] == "recovery_scenario_unavailable"
+
+    live_b = client.post("/api/v1/runs", data={"scenario": "B"}, files=public_files())
+    assert live_b.status_code == 202
+    forbidden_b = client.post(
+        f"/api/v1/runs/{live_b.json()['run_id']}/disruption-drafts", json={"text": "reduce supply"}
+    )
+    assert forbidden_b.status_code == 409
+    assert forbidden_b.json()["error"]["code"] == "disruption_draft_unavailable"
+
+    live_c = client.post("/api/v1/runs", data={"scenario": "C"}, files=public_files())
+    assert live_c.status_code == 202
+    live_c_view = client.get(f"/api/v1/runs/{live_c.json()['run_id']}")
+    assert live_c_view.json()["status"] == "succeeded"
+    c_generator = StubDraftGenerator({**ready_payload(), "supply_overrides": []})
+    app.state.disruption_draft_service = DisruptionDraftService(c_generator)
+    live_c_draft = client.post(
+        f"/api/v1/runs/{live_c.json()['run_id']}/disruption-drafts",
+        json={"text": "Lock A001 access 1 while the controller reviews the work."},
+    )
+    assert live_c_draft.status_code == 200, live_c_draft.text
+    assert live_c_draft.json()["status"] == "ready"
+    assert c_generator.context is not None
+    assert set(c_generator.context) == {
+        "request", "scenario", "horizon_weeks", "valid_supply_locations", "valid_placement_keys"
+    }
+    assert "SCHEDULE_ACCESS.csv" not in json.dumps(c_generator.context)
+    confirmed_c = client.post(
+        f"/api/v1/runs/{live_c.json()['run_id']}/recovery-drafts/{live_c_draft.json()['draft_id']}/confirm"
+    )
+    assert confirmed_c.status_code == 202, confirmed_c.text
+    recovered_c = client.get(f"/api/v1/runs/{confirmed_c.json()['run_id']}")
+    assert recovered_c.json()["status"] == "succeeded"
+    assert recovered_c.json()["scenario"] == "C"
 
     demo = create_demo(client)
     unsafe = StubDraftGenerator({**ready_payload(), "rationale": "This schedule is feasible."})
@@ -250,7 +313,7 @@ def test_supply_csv_creates_editable_all_week_draft_for_a_live_run() -> None:
     assert edited.json()["change"]["supply_overrides"][0]["week"] == 5
     confirmation = client.post(f"/api/v1/runs/{run_id}/recovery-drafts/{edited.json()['draft_id']}/confirm")
     assert confirmation.status_code == 409
-    assert confirmation.json()["error"]["code"] == "recovery_solver_unavailable"
+    assert confirmation.json()["error"]["code"] == "recovery_scenario_unavailable"
 
 
 def test_supply_csv_rejects_non_capacity_changes_and_noops() -> None:

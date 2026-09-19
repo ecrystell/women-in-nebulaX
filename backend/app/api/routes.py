@@ -414,13 +414,14 @@ def get_handover_evidence(request: Request, run_id: str) -> EvidenceEnvelope:
 def create_copilot_response(request: Request, run_id: str, payload: CopilotRequest) -> CopilotResponse:
     record = _authorize(request, run_id)
     service = get_service(request)
+    try:
+        evidence = service.evidence_for(record, payload.mode, payload.activity_id)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
     if not service.consume_copilot_request(record):
         raise ApiException(503, "copilot_unavailable", "Try the copilot again in a minute.")
     try:
-        evidence = service.evidence_for(record, payload.mode, payload.activity_id)
         return get_copilot(request).respond(evidence, payload.mode)
-    except EvidenceUnavailable as error:
-        raise _evidence_exception(error) from error
     except CopilotUnavailable as error:
         raise ApiException(503, "copilot_unavailable", str(error)) from error
 
@@ -432,11 +433,20 @@ def create_disruption_draft(
     record = _authorize(request, run_id)
     service = get_service(request)
     draft_service = get_draft_service(request)
-    if not service.is_public_demo(record):
+    capability = service.capability_report(draft_parser_available=draft_service.available)
+    is_public_demo = service.is_public_demo(record)
+    is_live_scenario_c = (
+        not record.demo
+        and record.status.value == "succeeded"
+        and record.schedule is not None
+        and record.prepared_instance is not None
+        and record.scenario in capability.disruption_drafts.supported_scenarios
+    )
+    if not is_public_demo and not is_live_scenario_c:
         raise ApiException(
             409,
-            "public_demo_only",
-            "Hand-typed disruption drafts are available only for the committed public demonstration fixture.",
+            "disruption_draft_unavailable",
+            "Hand-typed disruption drafts are available only for the public demo or a successful live Scenario C recovery run.",
         )
     if not draft_service.available:
         raise ApiException(503, "disruption_parser_unavailable", "The draft parser is not enabled for this service.")
@@ -530,7 +540,10 @@ def create_recovery(
         )
     service = get_service(request)
     base_record = _authorize(request, run_id)
-    if not service.capability_report(draft_parser_available=get_draft_service(request).available).recovery.available:
+    recovery_capability = service.capability_report(
+        draft_parser_available=get_draft_service(request).available
+    ).recovery
+    if not recovery_capability.available:
         raise ApiException(
             409,
             "recovery_solver_unavailable",
@@ -548,6 +561,12 @@ def create_recovery(
             422,
             "scenario_change_invalid",
             "The recovery request must reference the base run's candidate schedule and scenario.",
+        )
+    if base.scenario not in recovery_capability.supported_scenarios:
+        raise ApiException(
+            409,
+            "recovery_scenario_unavailable",
+            f"Recovery optimisation is currently available only for Scenario C, not Scenario {base.scenario.value}.",
         )
     record = service.create_recovery(run_id, change)
     if record is None:
