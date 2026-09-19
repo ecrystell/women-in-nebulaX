@@ -14,9 +14,17 @@ The local validator now mirrors the organiser's contract-level overrun calculati
 
 The direct `CpSatRailSolver` retains A/B/C and recovery support, while the hosted API currently advertises only its production-gated Scenario A path. A locally improved candidate must not replace an organiser-confirmed file solely because its local score is lower. The experimental expanded possession-colour search was rejected by the organiser for cross-group closure-zone conflicts and is not an approved submission path.
 
+## Scenario C dynamic recovery pipeline — implemented 2026-09-19
+
+`backend/app/solver/reoptimize_c.py` implements PS1 section 3.3's dynamic-update and urgent-maintenance bonus path. It accepts a changed eight-CSV instance, uses the retained validated Scenario C schedule as CP-SAT's incumbent/hint, and enforces a maximum 60-second solve budget. The published contract-level Scenario C score is the primary objective; movement away from the incumbent is secondary and may never hide a hard-rule breach. The command is documented in `README.md`.
+
+The pipeline supports optional confirmed hard locks through `--freeze-through-week`, recalculates stale result rows against the changed project dates, and validates every candidate against the changed instance. It emits exactly the three official CSVs and reports score/churn evidence separately on stdout. On `UNKNOWN` or another no-schedule result, it falls back only when the incumbent still passes the changed-instance validator; otherwise it fails without exporting a submission. It never replaces a valid incumbent with a worse locally scored candidate.
+
+Regression coverage is in `tests/test_reoptimize_c.py`. The focused solver/validator/recovery suite passes 11 tests and the full repository suite passes. The final real changed-input smoke run reduced `PLAT:BET:S15:EB` supply from 2 to 1, hard-locked 18 placements through week 4, returned `OPTIMAL` in 4.02 seconds, and lowered the locally calculated Scenario C score from 158.6 to 122.4 with zero local hard violations. The recovery moved 32 placements, added one and removed two while leaving 156 unchanged. These changed output files remain `unverified` until the organiser validates those exact files.
+
 ## Current implementation workstream
 
-The active Person 1/2 coding workstream covers the shared CP-SAT model and the implemented Scenario A and Scenario C policies. Scenario A uses strict nominal supply and no ECLO; Scenario C uses the published one-excess-night elasticity, ECLO, and two-week per-line ECLO windows. Scenario B, recovery locks, and disruption re-optimisation remain unimplemented.
+The active Person 1/2 solver includes direct A/B/C solving plus the standalone Scenario C dynamic-recovery command above. The hosted API remains separately production-gated; this CLI pipeline does not claim that the fixture-only web recovery sandbox is a live optimiser.
 
 The solver must use the existing domain/ingestion/export/preflight contracts, read the planning horizon from `06_PARAMETERS.csv`, generate the deterministic three-file output for the selected scenario, and integrate with the existing backend adapter boundary. The organiser validator is not present as a runnable package in this repository; local preflight results remain unverified until that validator is run.
 
@@ -70,7 +78,7 @@ The solver must use the existing domain/ingestion/export/preflight contracts, re
 - The local validator exposes organiser-style directional closure evidence under `detail.organiser_closure_findings`; Scenario C treats location-specific findings as hard, while Scenario A retains them as diagnostics and uses nominal hidden-night feasibility as its hard gate. Same-contract/type co-share-night contradictions are hard in both scenarios.
 - The organiser/reference validator is still unavailable as a runnable package, so every local result remains `unverified`. The supplied reference fixture intentionally has closure and co-share-night findings; the current canonical A and C outputs have zero local hard findings, and C has zero directional findings.
 - The full test suite passes after the organiser correction: 46 tests collected and passed across API, exports, ingestion, preflight, preprocessing, solver, and v1 API coverage. The public-fixture checksum test now normalizes Windows CRLF before comparing with the upstream LF manifest; no fixture input was changed. FastAPI and `python-multipart` are installed in the active Python 3.10 audit environment, while the project target remains Python 3.12. The only test output is the existing Starlette warning that `httpx` test-client compatibility is deprecated in favour of `httpx2`.
-- Scenario B, recovery locks, disruption re-optimisation, and LLM behaviour remain intentionally unimplemented for this workstream.
+- Historical note superseded by the authoritative sections above: Scenario B and locked-work Scenario C re-optimisation are now implemented in the direct solver/CLI. The fixture-only web recovery sandbox and LLM mutation path remain intentionally non-authoritative.
 
 ## Official contract
 

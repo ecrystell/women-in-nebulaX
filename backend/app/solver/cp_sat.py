@@ -154,6 +154,7 @@ class CpSatRailSolver:
         night: dict[tuple[str, int, int], cp_model.IntVar] = {}
         end_week: dict[str, cp_model.IntVar] = {}
         overrun_days: dict[str, cp_model.IntVar] = {}
+        contract_overrun_days: dict[str, cp_model.IntVar] = {}
 
         # Access assignment and workload conservation.  Scaling work units by
         # two keeps the model integral: a standard access yields 2, ECLO 3.
@@ -202,6 +203,33 @@ class CpSatRailSolver:
             if scenario == Scenario.B:
                 model.Add(overrun_days[activity_id] == 0)
 
+        # The published score applies each contract's final completion overrun
+        # to every activity-priority nudge in that contract. Keep the
+        # activity-level variables above for Scenario B's strict-date gate, but
+        # optimise A/C against the contract-level quantity used by the organiser
+        # and local validator.
+        for contract_number, project in projects.items():
+            member_ids = [
+                activity_id
+                for activity_id, activity in activities.items()
+                if activity.contract_number == contract_number
+            ]
+            if not member_ids:
+                raise SolveError(f"contract {contract_number} has no activities")
+            contract_end = model.NewIntVar(1, horizon, f"contract_end_{contract_number}")
+            model.AddMaxEquality(contract_end, [end_week[activity_id] for activity_id in member_ids])
+            planned_offset = (project.planned_completion_date - rules.horizon_start).days
+            max_overrun = max(0, horizon * 7 - 1 - planned_offset)
+            contract_overrun_days[contract_number] = model.NewIntVar(
+                0, max_overrun, f"contract_late_{contract_number}"
+            )
+            model.AddMaxEquality(
+                contract_overrun_days[contract_number],
+                [7 * contract_end - 1 - planned_offset, 0],
+            )
+            if scenario == Scenario.B:
+                model.Add(contract_overrun_days[contract_number] == 0)
+
         # Contract/type nightly workfronts.  The selected night labels also
         # guarantee the published cap on distinct access-night values.
         by_contract_type: dict[tuple[str, str], list[str]] = defaultdict(list)
@@ -220,6 +248,32 @@ class CpSatRailSolver:
             (item.activity_id, item.access_seq): item
             for item in (baseline.access_assignments if baseline else [])
         }
+        baseline_locations: dict[tuple[str, int], set[str]] = defaultdict(set)
+        if baseline:
+            for occupancy in baseline.occupancy_assignments:
+                baseline_locations[occupancy.activity_id, occupancy.week].add(occupancy.location_id)
+        if baseline:
+            # CSVs omit CP-SAT's internal state, but their visible week/night/
+            # ECLO choices are still a strong warm start. Hints are deliberately
+            # non-binding so changed workload, dates, or supply can move work.
+            hinted_activity_weeks: set[tuple[str, int]] = set()
+            for assignment in baseline.access_assignments:
+                activity = activities.get(assignment.activity_id)
+                if activity is None or not 1 <= assignment.week <= horizon:
+                    continue
+                project = projects[activity.contract_number]
+                key = (assignment.activity_id, assignment.week)
+                if (
+                    key in hinted_activity_weeks
+                    or assignment.access_night > project.number_of_maximum_access_per_week
+                ):
+                    continue
+                hinted_activity_weeks.add(key)
+                model.AddHint(x[key], 1)
+                model.AddHint(
+                    night[assignment.activity_id, assignment.week, assignment.access_night], 1
+                )
+                model.AddHint(eclo[key], assignment.eclo)
         if scenario_change and scenario_change.locked_placements and baseline is None:
             raise SolveError("locked placements require the referenced baseline schedule")
         if scenario_change:
@@ -235,6 +289,13 @@ class CpSatRailSolver:
                 project = projects[activity.contract_number]
                 if assignment.access_night > project.number_of_maximum_access_per_week:
                     raise SolveError(f"baseline access night is invalid for {key.activity_id}")
+                if baseline_locations[key.activity_id, assignment.week] != set(
+                    facts[key.activity_id].locations
+                ):
+                    raise SolveError(
+                        f"locked placement {key.activity_id}/{key.access_seq} has a changed "
+                        "occupancy footprint and cannot be preserved"
+                    )
                 model.Add(x[key.activity_id, assignment.week] == 1)
                 model.Add(
                     sum(x[key.activity_id, week] for week in range(1, assignment.week))
@@ -341,7 +402,11 @@ class CpSatRailSolver:
             project = projects[activity.contract_number]
             base = {1: 100, 2: 10, 3: 1}[project.contract_priority]
             nudge_tenths = {1: 3, 2: 2, 3: 0}[activity.activity_priority]
-            weighted_overrun_terms.append(base * (10 + nudge_tenths) * overrun_days[activity_id])
+            weighted_overrun_terms.append(
+                base
+                * (10 + nudge_tenths)
+                * contract_overrun_days[activity.contract_number]
+            )
         primary_terms = []
         if scenario != Scenario.B:
             primary_terms.extend(weighted_overrun_terms)

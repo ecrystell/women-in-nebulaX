@@ -228,7 +228,26 @@ python -m app.solver `
   --workers 8
 ```
 
-The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. If the output folder already contains a locally valid schedule, rerunning the same command reconstructs its hidden CP-SAT state and uses it as a complete warm start. The current corrected Scenario C public incumbent scores `158.2` in the 300-second/8-worker run; it is locally clean but not proven optimal. A clean local preflight remains **unverified** until the organiser/reference validator is run. Scenario B remains an extension point and is not implemented yet.
+The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. If the output folder already contains a locally valid schedule, rerunning the same command reconstructs its hidden CP-SAT state and uses it as a complete warm start. The retained organiser-confirmed Scenario C public incumbent scores `158.6`. A clean regenerated output remains **unverified** until the organiser/reference validator is run. Scenario B is available through the direct solver but is not yet exposed by the production-gated hosted API.
+
+### One-minute Scenario C recovery
+
+For a mid-horizon supply change, deadline update, or urgent activity already represented in a changed eight-CSV package, re-optimise from the retained Scenario C submission:
+
+```powershell
+$env:PYTHONPATH = "backend"
+python -m app.solver.reoptimize_c `
+  --instance path/to/changed-eight-csvs `
+  --baseline solver_output/scenario_c `
+  --output path/to/recovered-scenario-c `
+  --time-limit 60 `
+  --workers 8 `
+  --freeze-through-week 4
+```
+
+`--freeze-through-week` is optional and defaults to `0`. When supplied, every incumbent placement through that confirmed week is a hard lock; an incompatible update fails rather than silently moving approved work. The changed CSV package is authoritative, while the baseline supplies CP-SAT hints and the secondary minimal-churn objective. The published Scenario C score remains primary.
+
+The output directory must be new or empty. The pipeline writes only the three official CSVs after a fresh validation against the changed inputs and prints score/churn evidence as JSON. If CP-SAT times out, the incumbent is exported only when it is still valid for the changed package; otherwise the run fails without a submission. A clean local result remains `unverified` until the organiser validates those exact files.
 
 ## Required exports
 
