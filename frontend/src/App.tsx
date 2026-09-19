@@ -736,8 +736,7 @@ export default function App() {
                 {(["A", "B", "C"] as Scenario[]).map((option) => (
                   <button
                     key={option}
-                    disabled={!capabilities?.scenarios.find((item) => item.scenario === option)?.available || runBusy}
-                    title={capabilities?.scenarios.find((item) => item.scenario === option)?.message}
+                    disabled={runBusy}
                     onClick={() => setScenario(option)}
                     className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                   >
