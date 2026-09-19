@@ -10,6 +10,8 @@ from app.validation.preflight import validate_schedule
 
 from .cp_sat import CpSatRailSolver, SolveError, SolverConfig
 
+API_SOLVE_TIME_LIMIT_SECONDS = 150.0
+
 
 class CpSatSolverAdapter:
     """Expose the delivered A/B/C model through ``RunService`` safely."""
@@ -18,9 +20,12 @@ class CpSatSolverAdapter:
     recovery_scenarios = (Scenario.C,)
     supports_recovery = True
 
-    def __init__(self, *, time_limit_seconds: float = 300.0) -> None:
-        if time_limit_seconds <= 0 or time_limit_seconds > 300:
-            raise ValueError("API solver time limit must be greater than 0 and at most 300 seconds")
+    def __init__(self, *, time_limit_seconds: float = API_SOLVE_TIME_LIMIT_SECONDS) -> None:
+        if time_limit_seconds <= 0 or time_limit_seconds > API_SOLVE_TIME_LIMIT_SECONDS:
+            raise ValueError(
+                "API solver time limit must be greater than 0 and at most "
+                f"{API_SOLVE_TIME_LIMIT_SECONDS:.0f} seconds"
+            )
         self.time_limit_seconds = time_limit_seconds
         self.last_diagnostics: SolverDiagnostics | None = None
 

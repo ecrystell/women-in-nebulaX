@@ -12,7 +12,7 @@ from app.api.solver_contract import SolverTimedOut
 from app.domain.models import Scenario
 from app.domain.preprocessing import prepare_instance
 from app.ingestion.csv_loader import load_instance
-from app.solver.adapter import CpSatSolverAdapter
+from app.solver.adapter import API_SOLVE_TIME_LIMIT_SECONDS, CpSatSolverAdapter
 from app.solver.cp_sat import SolveError
 from app.validation.preflight import load_submission
 
@@ -42,7 +42,7 @@ class FreshCandidateSolver:
 
 class UnknownSolver:
     last_status = "UNKNOWN"
-    last_wall_time_seconds = 300.0
+    last_wall_time_seconds = API_SOLVE_TIME_LIMIT_SECONDS
 
     def solve_prepared(self, prepared, scenario, change=None, *, baseline=None):
         raise SolveError("no candidate")
@@ -54,7 +54,7 @@ def test_adapter_passes_prepared_instance_to_each_delivered_scenario(
 ) -> None:
     prepared = prepared_public_instance()
     rail_solver = FreshCandidateSolver()
-    adapter = CpSatSolverAdapter(time_limit_seconds=300)
+    adapter = CpSatSolverAdapter(time_limit_seconds=API_SOLVE_TIME_LIMIT_SECONDS)
     monkeypatch.setattr(adapter, "_new_solver", lambda: rail_solver)
 
     output = adapter.solve(prepared, scenario)
@@ -63,13 +63,13 @@ def test_adapter_passes_prepared_instance_to_each_delivered_scenario(
     assert rail_solver.calls == [(prepared, scenario, None, None)]
     assert output.diagnostics is not None
     assert output.diagnostics.status == "OPTIMAL"
-    assert output.diagnostics.time_limit_seconds == 300
+    assert output.diagnostics.time_limit_seconds == API_SOLVE_TIME_LIMIT_SECONDS
 
 
 def test_adapter_maps_unknown_to_timeout_without_a_scenario_fallback(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    adapter = CpSatSolverAdapter(time_limit_seconds=300)
+    adapter = CpSatSolverAdapter(time_limit_seconds=API_SOLVE_TIME_LIMIT_SECONDS)
     monkeypatch.setattr(adapter, "_new_solver", lambda: UnknownSolver())
 
     with pytest.raises(SolverTimedOut, match="Scenario B"):
@@ -82,7 +82,7 @@ def test_adapter_maps_unknown_to_timeout_without_a_scenario_fallback(
 def test_recovery_uses_valid_incumbent_only_when_no_c_candidate_exists(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    adapter = CpSatSolverAdapter(time_limit_seconds=300)
+    adapter = CpSatSolverAdapter(time_limit_seconds=API_SOLVE_TIME_LIMIT_SECONDS)
     monkeypatch.setattr(adapter, "_new_solver", lambda: UnknownSolver())
     baseline = load_submission(SOLVER_OUTPUT / "scenario_c")
     change = ScenarioChange(
@@ -98,3 +98,9 @@ def test_recovery_uses_valid_incumbent_only_when_no_c_candidate_exists(
     assert output.schedule == baseline
     assert output.diagnostics is not None
     assert output.diagnostics.recovery_source == "incumbent_fallback"
+
+
+def test_adapter_defaults_to_and_caps_the_hosted_solve_budget() -> None:
+    assert CpSatSolverAdapter().time_limit_seconds == API_SOLVE_TIME_LIMIT_SECONDS
+    with pytest.raises(ValueError, match="at most 150 seconds"):
+        CpSatSolverAdapter(time_limit_seconds=API_SOLVE_TIME_LIMIT_SECONDS + 0.1)

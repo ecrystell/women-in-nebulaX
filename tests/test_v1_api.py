@@ -81,8 +81,8 @@ class TimedOutSolver:
     supported_scenarios = (Scenario.A, Scenario.B, Scenario.C)
     last_diagnostics = SolverDiagnostics(
         status="UNKNOWN",
-        wall_time_seconds=300.0,
-        time_limit_seconds=300.0,
+        wall_time_seconds=150.0,
+        time_limit_seconds=150.0,
     )
 
     def solve(self, prepared_instance, scenario, scenario_change=None, baseline_schedule=None) -> SolverOutput:
@@ -341,8 +341,8 @@ def test_solver_timeout_is_failed_with_diagnostics_and_no_exports() -> None:
     assert body["problem"]["code"] == "solver_timeout"
     assert body["solver_diagnostics"] == {
         "status": "UNKNOWN",
-        "wall_time_seconds": 300.0,
-        "time_limit_seconds": 300.0,
+        "wall_time_seconds": 150.0,
+        "time_limit_seconds": 150.0,
         "recovery_source": None,
     }
     assert client.get(f"/api/v1/runs/{run_id}/exports/SCHEDULE_ACCESS.csv").status_code == 409

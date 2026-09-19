@@ -220,7 +220,7 @@ Run the CP-SAT solver directly without starting the frontend. Scenario A keeps
 its existing strict-supply/no-ECLO policy; Scenario B enforces its strict
 completion policy; Scenario C adds the published one-excess-possession
 allowance, ECLO, and two-week per-line ECLO windows. The hosted API exposes all
-three scenarios with a 300-second maximum CP-SAT solve budget.
+three scenarios with a 150-second maximum CP-SAT solve budget.
 
 Scenario A:
 
@@ -239,7 +239,7 @@ python -m app.solver `
   --scenario C `
   --input-dir data/public-instance `
   --output-dir sample_submission/scenario_c `
-  --time-limit 300 `
+  --time-limit 150 `
   --workers 8
 ```
 
