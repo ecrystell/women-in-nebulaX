@@ -128,7 +128,9 @@ The read-only copilot sends only one selected deterministic evidence envelope to
 Gemini: an activity explanation, up to ten capacity hotspots, or a compact
 handover summary. It never sends raw CSVs, full schedules, exports, submission
 packages, checksums, organiser metadata, or free-text disruption requests. Its
-answers remain unverified and cannot establish feasibility. See
+answers remain unverified and cannot establish feasibility. For a successful
+Scenario C recovery run, the separate draft parser may receive controller text
+with bounded IDs only, as described below. See
 [the hidden-data policy](docs/HIDDEN_DATA_POLICY.md) for the operational rules.
 
 ## Tech stack
@@ -153,7 +155,7 @@ The initial foundation provides typed CSV and submission contracts, public schem
 docker compose up --build
 ```
 
-Open `http://localhost:8080` and call `http://localhost:8080/api/v1/health` to confirm the versioned integration API. The validator status remains `unavailable` or `unverified` until the organiser validator is integrated. Public fixture provenance is in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md); the requested validator package details are in [`docs/VALIDATOR_REQUEST.md`](docs/VALIDATOR_REQUEST.md). Team contract and rule-review materials are in [`docs/data-contract.md`](docs/data-contract.md), [`docs/rule-matrix.md`](docs/rule-matrix.md), and [`docs/decision-log.md`](docs/decision-log.md).
+Open `http://localhost:8080` and call `http://localhost:8080/api/v1/health` to confirm the versioned integration API. The app remains `unavailable` or `unverified`: the team performs organiser uploads and reads their verdict separately outside For Rails. Public fixture provenance is in [`docs/DATA_SOURCES.md`](docs/DATA_SOURCES.md); team contract and rule-review materials are in [`docs/data-contract.md`](docs/data-contract.md), [`docs/rule-matrix.md`](docs/rule-matrix.md), and [`docs/decision-log.md`](docs/decision-log.md).
 
 To run the backend tests outside Docker, use Python 3.12 and install the exact packages in `requirements.txt`; build the frontend with `npm ci` followed by `npm run build` from `frontend/`.
 
@@ -183,8 +185,8 @@ the three official CSVs plus an immutable checksum manifest. Upload the CSVs
 manually on the organiser website, then record only structured result metadata
 and download the combined evidence JSON. This data is held only for the live
 process and must be retained outside Git. An organiser-reported outcome remains
-`unverified`; it never sets `feasible=true` without a supported organiser report
-integration. See [`docs/ORGANISER_SUBMISSION_PLAYBOOK.md`](docs/ORGANISER_SUBMISSION_PLAYBOOK.md).
+`unverified`; For Rails does not retrieve, parse, or assign organiser verdicts.
+See [`docs/ORGANISER_SUBMISSION_PLAYBOOK.md`](docs/ORGANISER_SUBMISSION_PLAYBOOK.md).
 
 ### Public recovery sandbox (fixture-only)
 
@@ -207,8 +209,10 @@ and opens an editable review draft for week scoping and placement locks. A
 confirmed review on a successful live **Scenario C** run invokes the delivered
 locked-work recovery model. The recovered candidate is preflighted against the
 changed supply, receives a before/after diff, and is exportable only when it is
-locally clean. A/B recovery remains unavailable. Natural-language parsing
-remains public-demo-only, so hidden upload data is never sent to Gemini.
+locally clean. A/B recovery remains unavailable. A successful live Scenario C
+run may also use Gemini to create a review-only draft from controller text; it
+sends only bounded location/placement identifiers and the planning horizon, not
+CSV content, a full schedule, exports, or organiser material.
 
 ### Scenario A/B/C solver (implemented)
 

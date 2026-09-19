@@ -318,6 +318,7 @@ class RunService:
         ]
         recovery_available = bool(getattr(self.solver, "supports_recovery", False) and recovery_scenarios)
         public_demo = self.public_fixture_available()
+        live_drafts_available = recovery_available and draft_parser_available
         return CapabilityReport(
             scenarios=scenarios,
             recovery=FeatureCapability(
@@ -340,13 +341,14 @@ class RunService:
                 ),
             ),
             disruption_drafts=FeatureCapability(
-                available=public_demo and draft_parser_available,
-                code=None if public_demo and draft_parser_available else "disruption_parser_unavailable",
+                available=live_drafts_available,
+                code=None if live_drafts_available else "disruption_parser_unavailable",
                 message=(
-                    "Draft disruption parsing is available for the public fixture only."
-                    if public_demo and draft_parser_available
-                    else "Draft disruption parsing requires the intact public fixture and an enabled Vertex service."
+                    "Draft disruption parsing is available for successful Scenario C recovery runs."
+                    if live_drafts_available
+                    else "Draft disruption parsing requires an enabled Vertex service and Scenario C recovery."
                 ),
+                supported_scenarios=recovery_scenarios if live_drafts_available else [],
             ),
         )
 

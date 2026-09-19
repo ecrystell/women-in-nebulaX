@@ -23,7 +23,8 @@ capacity hotspots, or a compact handover summary. It never receives:
 
 - raw eight-CSV inputs, CSV bytes, exports or submission ZIPs;
 - a complete schedule, all activity rows, checksums or organiser metadata;
-- user-uploaded screenshots, organiser reports or a free-text disruption;
+- user-uploaded screenshots, organiser reports, raw CSV content, or any
+  unbounded schedule query;
 - credentials, service-account keys, or API keys.
 
 Gemini is a narrative renderer. It cannot invoke the solver, local validator,
@@ -31,10 +32,15 @@ exporter, submission workflow, recovery endpoint, or `ScenarioChange` code.
 Every answer contains its exact evidence envelope and a service-generated
 notice that organiser verification remains unavailable or unverified.
 
-Natural-language recovery parsing is limited to the committed public demo
-fixture. Uploaded runs may use a replacement `04_LOCATION_SUPPLY.csv` and a
-manual review only; their disruption text and supply data are never sent to
-Gemini.
+For a successful live Scenario C recovery run, Gemini may receive the
+controller's bounded disruption text plus a capped list of valid supply-location
+IDs, the planning-week horizon, and baseline placement keys. The service never
+sends raw CSVs, source values, schedule IDs, complete schedules, exports,
+checksums, organiser metadata, or any uploaded file content. Deterministic code
+validates the returned draft before a controller can review or confirm it.
+
+Uploaded Scenario A/B runs retain CSV plus manual review only. The committed
+public demo continues to support its separate bounded draft workflow.
 
 ## Cloud controls
 

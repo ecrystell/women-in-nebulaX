@@ -433,11 +433,20 @@ def create_disruption_draft(
     record = _authorize(request, run_id)
     service = get_service(request)
     draft_service = get_draft_service(request)
-    if not service.is_public_demo(record):
+    capability = service.capability_report(draft_parser_available=draft_service.available)
+    is_public_demo = service.is_public_demo(record)
+    is_live_scenario_c = (
+        not record.demo
+        and record.status.value == "succeeded"
+        and record.schedule is not None
+        and record.prepared_instance is not None
+        and record.scenario in capability.disruption_drafts.supported_scenarios
+    )
+    if not is_public_demo and not is_live_scenario_c:
         raise ApiException(
             409,
-            "public_demo_only",
-            "Hand-typed disruption drafts are available only for the committed public demonstration fixture.",
+            "disruption_draft_unavailable",
+            "Hand-typed disruption drafts are available only for the public demo or a successful live Scenario C recovery run.",
         )
     if not draft_service.available:
         raise ApiException(503, "disruption_parser_unavailable", "The draft parser is not enabled for this service.")

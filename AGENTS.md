@@ -373,8 +373,8 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Scenario C recovery orchestration | Complete | A recovery request requires an explicit confirmation timestamp and matching base schedule/scenario. Confirmed Scenario C supply overrides, locks, and baseline schedule flow into the recovery model; the returned candidate is preflighted against changed supply and receives a deterministic `ScheduleDiff`. A/B recovery remains blocked. |
 | R4.3/R4.5A public recovery sandbox | Complete integration-ready demo | `GET /api/v1/capabilities` exposes the real scenario and recovery boundaries. A separate, checksummed public-fixture demo replays the published Scenario A schedule and a fixed reviewed disruption. It is visibly `demo=true`, locally clean but `unverified`, and cannot export, package, record organiser evidence, or enter the real solver path. |
-| Recovery review inputs | Complete | A completed run can compare a replacement `04_LOCATION_SUPPLY.csv` against its in-memory base input and produce an editable, unconfirmed capacity/lock draft. Confirmed Scenario C drafts dispatch real re-optimisation; Gemini text parsing remains public-demo-only. |
-| R4.8A public draft parser | Complete integration-ready demo | A bounded, Vertex-backed typed draft endpoint is available only for that public demo. It sends identifiers and controller text only, validates every reference deterministically, stores drafts only in the live run, and permits fixed-demo replay only for a `ready` draft. It cannot invoke solver, validation, export, submission, or real recovery. |
+| Recovery review inputs | Complete | A completed run can compare a replacement `04_LOCATION_SUPPLY.csv` against its in-memory base input and produce an editable, unconfirmed capacity/lock draft. Confirmed Scenario C drafts dispatch real re-optimisation. |
+| R4.8B live C draft parser | Complete pending Cloud smoke | A bounded Vertex draft endpoint supports the public demo and successful live Scenario C runs. It receives only controller text, capped supply/placement identifiers, and planning horizon; deterministic code validates every reference before controller confirmation can dispatch recovery. A/B remain unavailable. |
 | Regression and container checks | Complete for the implemented scenario gates | Pytest covers upload failures, lifecycle states, real solver execution, unsupported-scenario handling, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
 | Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
 
@@ -431,9 +431,10 @@ This is the delivery checklist for the custom-validator, integration, and ground
 **Done when:** LLM output is useful explanation around deterministic evidence, never a second scheduler or validator.
 
 **R4.6 implementation status:** The read-only evidence/API/UI and Vertex
-adapter are implemented. Production deployment remains gated on creating the
-dedicated Cloud Run service identity and performing the public-fixture-only
-smoke test; no hidden instance is used for deployment validation.
+adapter are implemented. The Cloud Run release check verifies the dedicated
+service identity, bounded public-fixture evidence, readable responses, and safe
+provider-failure handling. Organiser validation is always a manual external
+workflow; this app never assigns organiser verification.
 
 #### R4.7 — Deploy and rehearse
 
@@ -446,11 +447,11 @@ smoke test; no hidden instance is used for deployment validation.
 
 **Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
 
-#### R4.8 — Bonus: typed disruption request parser (R4.8A public demo complete)
+#### R4.8 — Typed disruption request parser (R4.8B live Scenario C complete)
 
 **Dependency:** R4.5 recovery integration, stable `ScenarioChange` validation, and the grounded-tool safeguards in R4.6.
 
-**R4.8A complete:** public-fixture controller text can become an unconfirmed, schema-checked draft with assumptions, unresolved references, and field errors. It can only confirm the fixed public replay. Extending it to a hidden/live run remains blocked on the real recovery adapter.
+**R4.8B complete:** public-fixture and successful live Scenario C controller text can become an unconfirmed, schema-checked draft with assumptions, unresolved references, and field errors. Live calls send only bounded identifiers and controller text to Vertex; they cannot expose raw CSVs, complete schedules, exports, checksums, or organiser data.
 
 - Add an LLM-backed, schema-constrained endpoint that translates a controller's hand-typed disruption request into a **draft** `ScenarioChange` (for example, a reduced location supply, a requested lock, or a stated rationale).
 - Show the parsed fields, assumptions, unresolved references, and validation errors to the controller before any action is available.
@@ -459,7 +460,7 @@ smoke test; no hidden instance is used for deployment validation.
 - Do not allow the LLM to assign a placement, alter priorities or railway rules, claim feasibility, bypass locked-work checks, or execute a change itself.
 - Add adversarial tests for ambiguous language, invented IDs, conflicting requests, missing confirmation, and attempts to coerce a feasibility claim or direct schedule mutation.
 
-**Done when:** a controller can type a disruption in plain language, receive a transparent draft change for review, and safely pass only an explicitly confirmed, deterministic `ScenarioChange` to recovery.
+**Done when:** a controller can type a disruption in plain language, receive a transparent draft change for review, and safely pass only an explicitly confirmed, deterministic Scenario C change to recovery.
 
 ### Person 4 sequencing and dependencies
 

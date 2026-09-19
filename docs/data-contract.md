@@ -246,12 +246,13 @@ type ScenarioChangeDraft = {
 };
 ```
 
-R4.8A restricts this endpoint to the public demo and passes the model only the
-controller text plus bounded public location and placement identifiers. Server
-code validates every generated reference before retaining the draft. A draft
-cannot run any solver, validator, exporter, submission action, or real
-recovery. A `ready` draft may only trigger the fixed public replay; extending
-that confirmation path to a live recovery waits for the locked-work solver.
+The public demo and a successful live Scenario C run may use this endpoint.
+The model receives only controller text, a bounded supply-location identifier
+list, the planning horizon, and bounded baseline placement keys. Server code
+validates every generated reference before retaining the draft. A draft cannot
+run any solver, validator, exporter, or submission action. A `ready` live C
+draft can only reach recovery after explicit controller confirmation; Scenario
+A/B remain unavailable for recovery.
 
 ### Recovery review inputs
 
@@ -263,8 +264,9 @@ select exact baseline placement locks, and add a rationale in the review draft.
 Those edits are deterministically checked and remain unconfirmed until a
 controller confirms them. Confirmed edits dispatch only for scenarios exposed
 by `recovery.supported_scenarios` (currently Scenario C), then receive the same
-local-preflight and export gate as a fresh run. Natural-language parsing remains
-public-demo-only so uploaded hidden data is never sent to Gemini.
+local-preflight and export gate as a fresh run. Live natural-language parsing
+uses the bounded identifier-only policy above; uploaded Scenario A/B runs use
+CSV/manual review only.
 
 ## Official CSV and export mapping
 

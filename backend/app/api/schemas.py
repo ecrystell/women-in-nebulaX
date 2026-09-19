@@ -297,7 +297,7 @@ class ApiFieldError(ApiModel):
 
 
 class ScenarioChangeDraftRequest(ApiModel):
-    """Bounded controller prose for the public-fixture draft parser."""
+    """Bounded controller prose for the review-only disruption draft parser."""
 
     text: str = Field(min_length=1, max_length=1_000)
 

@@ -1,4 +1,4 @@
-"""Public-fixture-only, review-only disruption draft parsing.
+"""Bounded, review-only disruption draft parsing.
 
 This module deliberately has no import from solver, exporter, organiser
 submission, or recovery dispatch code.  It can interpret a bounded controller
@@ -101,7 +101,7 @@ class VertexDraftGenerator:
             raise DisruptionDraftUnavailable("The Vertex AI client is not installed.") from error
         instruction = (
             "You convert a controller's disruption request into a review-only JSON draft. "
-            "Use only the supplied public reference list. Never invent IDs, make a schedule, "
+            "Use only the supplied bounded reference list. Never invent IDs, make a schedule, "
             "claim feasibility, call tools, or set confirmation. If a reference is ambiguous or "
             "missing, leave it out and explain it in unresolved_references. Return exactly one JSON "
             "object with only these keys: supply_overrides (an array of objects with location_id, week, "
@@ -162,14 +162,13 @@ class DisruptionDraftService:
         if not self.available:
             raise DisruptionDraftUnavailable("The draft parser is not enabled for this service.")
         if record.schedule is None or record.prepared_instance is None:
-            raise DisruptionDraftUnavailable("A public demo schedule is required before parsing a disruption.")
+            raise DisruptionDraftUnavailable("A completed schedule is required before parsing a disruption.")
         context = {
             "request": text,
             "scenario": record.scenario.value,
-            "schedule_id": record.schedule.schedule_id,
             "horizon_weeks": record.prepared_instance.calendar.horizon_weeks,
-            # These are identifiers only, not source rows, placements, exports,
-            # checksums, organiser metadata, or raw CSV data.
+            # These are bounded identifiers only, not source rows, placements,
+            # exports, checksums, organiser metadata, or raw CSV data.
             "valid_supply_locations": sorted(record.prepared_instance.supply)[:200],
             "valid_placement_keys": [
                 {"activity_id": item.activity_id, "access_seq": item.access_seq}
