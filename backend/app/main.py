@@ -16,12 +16,16 @@ from app.api.errors import ApiException, error_response
 from app.api.routes import router as v1_router
 from app.api.run_service import RunService
 from app.api.schemas import ApiError, ApiFieldError
+from app.ai.gemini import CopilotService
+from app.ai.disruption_drafts import DisruptionDraftService
+from app.solver.adapter import CpSatSolverAdapter
 from app.validation.adapter import OfficialValidatorAdapter
-from app.solver.cp_sat import CpSatRailSolver
 
 app = FastAPI(title="RailAccess AI", version="0.1.0")
 validator = OfficialValidatorAdapter()
-app.state.run_service = RunService(solver=CpSatRailSolver(), validator=validator)
+app.state.run_service = RunService(solver=CpSatSolverAdapter(), validator=validator)
+app.state.copilot_service = CopilotService()
+app.state.disruption_draft_service = DisruptionDraftService()
 
 
 @app.middleware("http")
@@ -29,6 +33,9 @@ async def request_id(request: Request, call_next):
     request.state.request_id = str(uuid4())
     response = await call_next(request)
     response.headers["X-Request-ID"] = request.state.request_id
+    if request.url.path.startswith("/api/v1/runs/"):
+        response.headers.setdefault("Cache-Control", "no-store")
+        response.headers.setdefault("Referrer-Policy", "no-referrer")
     return response
 
 

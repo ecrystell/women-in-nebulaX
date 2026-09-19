@@ -37,6 +37,18 @@ def test_published_sample_passes_observable_preflight_but_stays_unverified() -> 
     assert "organiser validator" in report.message
 
 
+def test_organiser_confirmed_outputs_use_contract_level_overrun_scoring() -> None:
+    expected = {
+        "scenario_a": 608.3,
+        "scenario_b": 50.0,
+        "scenario_c": 158.6,
+    }
+    for scenario, score in expected.items():
+        report = validate_submission(PUBLIC_DATA, ROOT / "solver_output" / scenario)
+        assert report.hard_violations == []
+        assert round(float(report.soft_scores["objective_score"]), 1) == score
+
+
 def test_preflight_detects_workload_dates_precedence_and_topology_failures() -> None:
     workload = schedule_copy()
     workload.access_assignments = [item for item in workload.access_assignments if item.activity_id != "A001"]

@@ -36,10 +36,18 @@ def priority_weighted_overrun(
     projects = {project.contract_number: project for project in instance.projects}
     activities = {activity.activity_id: activity for activity in instance.activities}
     completion = activity_completion_dates(instance, schedule, calendar=calendar)
-    score = 0.0
+    completion_by_contract: dict[str, date] = {}
     for activity_id, completed in completion.items():
-        activity = activities[activity_id]
+        contract = activities[activity_id].contract_number
+        completion_by_contract[contract] = max(
+            completed, completion_by_contract.get(contract, completed)
+        )
+    score = 0.0
+    for activity in instance.activities:
         project = projects[activity.contract_number]
+        completed = completion_by_contract.get(activity.contract_number)
+        if completed is None:
+            continue
         overrun_days = max(0, (completed - project.planned_completion_date).days)
         score += (
             CONTRACT_WEIGHT[project.contract_priority]

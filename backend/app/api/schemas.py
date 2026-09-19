@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 from enum import Enum
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -35,6 +35,7 @@ class InputSource(ApiModel):
     instance_id: str
     received_at: datetime
     fixture: bool = False
+    file_checksums: dict[str, str] = Field(default_factory=dict)
 
 
 class InputInstance(ApiModel):
@@ -188,6 +189,12 @@ class Violation(ApiModel):
     activity_ids: list[str] | None = None
     location_ids: list[str] | None = None
     week: int | None = Field(default=None, gt=0)
+    source_file: str | None = None
+    row: int | None = Field(default=None, ge=2)
+    field: str | None = None
+    co_share_group: str | None = None
+    derived_footprint: list[str] | None = None
+    input_values: dict[str, str | int | float | bool | None] | None = None
 
 
 class ValidatorMetadata(ApiModel):
@@ -245,6 +252,20 @@ class ValidationReport(ApiModel):
                         else None
                     ),
                     week=(int(item["week"]) if item.get("week") is not None else None),
+                    source_file=(str(item["source_file"]) if item.get("source_file") is not None else None),
+                    row=(int(item["row"]) if item.get("row") is not None else None),
+                    field=(str(item["field"]) if item.get("field") is not None else None),
+                    co_share_group=(
+                        str(item["co_share_group"]) if item.get("co_share_group") is not None else None
+                    ),
+                    derived_footprint=(
+                        [str(value) for value in item["derived_footprint"]]
+                        if isinstance(item.get("derived_footprint"), list)
+                        else None
+                    ),
+                    input_values=(
+                        item["input_values"] if isinstance(item.get("input_values"), dict) else None
+                    ),
                 )
                 for item in report.hard_violations
             ],
@@ -268,6 +289,40 @@ class ScenarioChange(ApiModel):
     requested_by: str
     confirmed_at: datetime | None = None
     rationale: str | None = None
+
+
+class ApiFieldError(ApiModel):
+    field: str
+    message: str
+
+
+class ScenarioChangeDraftRequest(ApiModel):
+    """Bounded controller prose for the public-fixture draft parser."""
+
+    text: str = Field(min_length=1, max_length=1_000)
+
+
+class ScenarioChangeDraftStatus(str, Enum):
+    READY = "ready"
+    NEEDS_REVIEW = "needs_review"
+
+
+class ScenarioChangeDraft(ApiModel):
+    """A review-only interpretation; it is never a confirmed change."""
+
+    draft_id: str
+    change: ScenarioChange
+    assumptions: list[str] = Field(default_factory=list, max_length=20)
+    unresolved_references: list[str] = Field(default_factory=list, max_length=20)
+    field_errors: list[ApiFieldError] = Field(default_factory=list)
+    evidence_version: Literal["1"] = "1"
+    status: ScenarioChangeDraftStatus
+
+
+class DemoRecoveryRequest(ApiModel):
+    """Optionally tie a fixed public replay to a reviewed draft."""
+
+    draft_id: str | None = Field(default=None, min_length=1, max_length=100)
 
 
 class PlacementChange(ApiModel):
@@ -298,9 +353,177 @@ class RunStatus(str, Enum):
     BLOCKED = "blocked"
 
 
+class FeatureCapability(ApiModel):
+    available: bool
+    code: str | None = None
+    message: str
+
+
+class ScenarioCapability(FeatureCapability):
+    scenario: Scenario
+
+
+class CapabilityReport(ApiModel):
+    scenarios: list[ScenarioCapability] = Field(min_length=3, max_length=3)
+    recovery: FeatureCapability
+    public_demo_recovery: FeatureCapability
+    disruption_drafts: FeatureCapability
+
+
+class EvidenceKind(str, Enum):
+    ACTIVITY = "activity"
+    CAPACITY_HOTSPOTS = "capacity_hotspots"
+    HANDOVER = "handover"
+
+
+class EvidenceValidation(ApiModel):
+    """Small, non-authoritative validation context safe to show beside AI text."""
+
+    status: ValidationStatus
+    feasible: bool | None = None
+    hard_violation_count: int = Field(ge=0)
+    message: str
+
+
+class ActivityEvidence(ApiModel):
+    kind: Literal[EvidenceKind.ACTIVITY]
+    activity_id: str
+    contract_number: str
+    activity_type: str
+    access_type: str
+    nature_of_activity: str
+    total_accesses_required: int = Field(gt=0)
+    planned_start_week: int = Field(gt=0)
+    predecessor_activity_id: str | None = None
+    placements: list[Placement]
+    closure_footprint: list[str]
+    closure_footprint_labels: list[str]
+    placement_summaries: list[str]
+    contract_result: ContractResult | None = None
+    local_findings: list[Violation] = Field(default_factory=list)
+
+
+class CapacityHotspot(ApiModel):
+    location_id: str
+    location_label: str
+    week: int = Field(gt=0)
+    possession_group_count: int = Field(ge=0)
+    supply_capacity: int = Field(ge=0)
+    allowed_possessions: int = Field(ge=0)
+    excess_access_nights: int = Field(ge=0)
+    utilisation: float = Field(ge=0)
+    co_share_groups: list[str]
+    activity_ids: list[str]
+
+
+class CapacityHotspotsEvidence(ApiModel):
+    kind: Literal[EvidenceKind.CAPACITY_HOTSPOTS]
+    hotspots: list[CapacityHotspot] = Field(max_length=10)
+
+
+class HandoverEvidence(ApiModel):
+    kind: Literal[EvidenceKind.HANDOVER]
+    placement_count: int = Field(ge=0)
+    scheduled_activity_count: int = Field(ge=0)
+    contract_results: list[ContractResult]
+    local_score_components: dict[str, Any]
+    top_hotspots: list[CapacityHotspot] = Field(max_length=3)
+
+
+EvidencePayload = Annotated[
+    ActivityEvidence | CapacityHotspotsEvidence | HandoverEvidence,
+    Field(discriminator="kind"),
+]
+
+
+class EvidenceEnvelope(ApiModel):
+    evidence_version: Literal["1"] = "1"
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    generated_at: datetime
+    validation: EvidenceValidation
+    payload: EvidencePayload
+
+
+class CopilotMode(str, Enum):
+    ACTIVITY_EXPLANATION = "activity_explanation"
+    CAPACITY_HOTSPOTS = "capacity_hotspots"
+    HANDOVER_SUMMARY = "handover_summary"
+
+
+class CopilotRequest(ApiModel):
+    mode: CopilotMode
+    activity_id: str | None = Field(default=None, min_length=1, max_length=100)
+
+    @model_validator(mode="after")
+    def activity_is_required_only_for_activity_explanations(self) -> "CopilotRequest":
+        if self.mode is CopilotMode.ACTIVITY_EXPLANATION and not self.activity_id:
+            raise ValueError("activity_id is required for an activity explanation")
+        if self.mode is not CopilotMode.ACTIVITY_EXPLANATION and self.activity_id is not None:
+            raise ValueError("activity_id is supported only for an activity explanation")
+        return self
+
+
+class CopilotResponse(ApiModel):
+    mode: CopilotMode
+    answer: str = Field(min_length=1, max_length=2000)
+    evidence: EvidenceEnvelope
+    model: str
+    generated_at: datetime
+    verification_disclaimer: Literal[
+        "Organiser verification is unavailable or unverified; this explanation does not establish feasibility."
+    ] = "Organiser verification is unavailable or unverified; this explanation does not establish feasibility."
+
+
 class RunProblem(ApiModel):
     code: str
     message: str
+
+
+class OrganiserReportedOutcome(str, Enum):
+    UNKNOWN = "unknown"
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+
+
+class OrganiserEvidenceInput(ApiModel):
+    """Human-entered website metadata; never parsed as organiser verification."""
+
+    attempt_number: int = Field(ge=1, le=5)
+    submitted_at: datetime
+    reported_outcome: OrganiserReportedOutcome
+    report_reference: str | None = Field(default=None, max_length=500)
+    report_sha256: str | None = Field(default=None, pattern=r"^[0-9a-fA-F]{64}$")
+    note: str | None = Field(default=None, max_length=2000)
+
+
+class OrganiserEvidence(OrganiserEvidenceInput):
+    recorded_at: datetime
+
+
+class SubmissionManifest(ApiModel):
+    schema_version: Literal["1"] = "1"
+    package_id: str
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    created_at: datetime
+    build_commit: str
+    input_checksums: dict[str, str]
+    output_checksums: dict[str, str]
+    input_row_counts: dict[str, int]
+    local_preflight_report: ValidationReport
+
+
+class SubmissionPackageSummary(ApiModel):
+    package_id: str
+    run_id: str
+    schedule_id: str
+    scenario: Scenario
+    created_at: datetime
+    build_commit: str
+    organiser_evidence: OrganiserEvidence | None = None
 
 
 class RunView(ApiModel):
@@ -311,15 +534,14 @@ class RunView(ApiModel):
     created_at: datetime
     updated_at: datetime
     recovery_of_run_id: str | None = None
+    scenario_change: ScenarioChange | None = None
     schedule: Schedule | None = None
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
     problem: RunProblem | None = None
-
-
-class ApiFieldError(ApiModel):
-    field: str
-    message: str
+    demo: bool = False
+    demo_notice: str | None = None
+    submission_packages: list[SubmissionPackageSummary] = Field(default_factory=list)
 
 
 class ApiError(ApiModel):

@@ -2,6 +2,8 @@ services:
   railaccess:
     build:
       context: .
+      args:
+        RAILACCESS_BUILD_COMMIT: ${RAILACCESS_BUILD_COMMIT:-unknown}
     ports:
       - "8080:8080"
     environment:

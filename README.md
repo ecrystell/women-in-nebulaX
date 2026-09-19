@@ -117,6 +117,20 @@ The official data already provides location, workload, possession type and prior
 
 Every response is grounded in structured solver output. Gemini cannot directly allocate work, bypass a hard rule, or claim a plan is feasible.
 
+### Hidden-instance and copilot handling
+
+Hidden scheduling data stays in the live Cloud Run process only and is removed
+after 30 minutes of inactivity, restart, revision rollout, or scale-down. A
+per-run browser cookie protects runs, exports, packages, evidence and recovery
+requests; a run ID alone is insufficient.
+
+The read-only copilot sends only one selected deterministic evidence envelope to
+Gemini: an activity explanation, up to ten capacity hotspots, or a compact
+handover summary. It never sends raw CSVs, full schedules, exports, submission
+packages, checksums, organiser metadata, or free-text disruption requests. Its
+answers remain unverified and cannot establish feasibility. See
+[the hidden-data policy](docs/HIDDEN_DATA_POLICY.md) for the operational rules.
+
 ## Tech stack
 
 | Layer | Technology | Role |
@@ -154,6 +168,38 @@ docker compose run --rm app python -m app.validation.preflight `
 ```
 
 Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, same-week possession-group closure zones, hidden weekly physical-night feasibility, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. Scenario C treats location-specific organiser-style directional closure findings as hard; Scenario A retains those findings as diagnostics and uses nominal hidden-night feasibility as its hard gate. Same-contract/type co-share-night contradictions are hard in both. The published `access_night` remains contract/type-local and is not treated as a network-wide identifier. A locally clean result remains unverified until the organiser validator confirms the exact exported files.
+
+### Manual organiser submission evidence
+
+Set a full Git commit before building the package-capable container:
+
+```powershell
+$env:RAILACCESS_BUILD_COMMIT = git rev-parse HEAD
+docker compose up --build
+```
+
+After a locally clean succeeded run, the controller can create a ZIP containing
+the three official CSVs plus an immutable checksum manifest. Upload the CSVs
+manually on the organiser website, then record only structured result metadata
+and download the combined evidence JSON. This data is held only for the live
+process and must be retained outside Git. An organiser-reported outcome remains
+`unverified`; it never sets `feasible=true` without a supported organiser report
+integration. See [`docs/ORGANISER_SUBMISSION_PLAYBOOK.md`](docs/ORGANISER_SUBMISSION_PLAYBOOK.md).
+
+### Public recovery sandbox (fixture-only)
+
+The controller UI can open a public recovery demonstration without uploading
+data. The API verifies the committed public input checksums, then shows the
+published Scenario A schedule beside a fixed, reviewed disruption replay. The
+demo is explicitly **unverified** and is not an optimisation: it cannot export
+CSV files, create a submission package, record organiser evidence, or be used
+with an uploaded/hidden instance.
+
+When Vertex is enabled, the demo also accepts a short controller instruction
+and returns a review-only typed disruption draft. Only recognised public
+location and placement identifiers are retained; unknown or ambiguous values
+remain errors. A ready draft can replay the fixed demo only. Real disruption
+recovery remains unavailable until the locked-work recovery solver is wired in.
 
 ### Scenario A/C solver (implemented)
 

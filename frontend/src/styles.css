@@ -2,27 +2,98 @@
 
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: Aptos, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
   background: #07111f;
 }
 
 body {
   margin: 0;
   min-width: 320px;
+  background: #07111f;
 }
 
-.night-sky {
+.rail-editorial {
   background:
-    radial-gradient(circle at 74% 16%, rgb(30 64 175 / 24%), transparent 25rem),
-    radial-gradient(circle at 18% 82%, rgb(8 145 178 / 14%), transparent 28rem),
+    radial-gradient(circle at 74% 16%, rgb(30 64 175 / 25%), transparent 25rem),
+    radial-gradient(circle at 18% 82%, rgb(15 23 42 / 34%), transparent 28rem),
     linear-gradient(160deg, #020617 0%, #08152d 55%, #020617 100%);
+}
+
+.train-viewpoint {
+  height: clamp(8rem, 18vw, 12rem);
+}
+
+.planner-toolbar {
+  min-height: 3.75rem;
+  border-bottom: 1px solid rgb(239 68 68 / 40%);
+  padding: 0.35rem 0 0.8rem;
+  background: transparent;
+}
+
+.editorial-title,
+.editorial-card h2 {
+  font-family: Aptos, "Segoe UI", ui-sans-serif, system-ui, sans-serif;
+  letter-spacing: -0.015em;
+}
+
+.editorial-card h2 {
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.editorial-card h2.section-heading {
+  font-size: 1.25rem;
+}
+
+.editorial-card {
+  border-color: rgb(71 85 105 / 85%) !important;
+  border-radius: 0.85rem;
+  padding: 1rem !important;
+  background: rgb(2 12 29 / 93%) !important;
+  box-shadow: 0 0.75rem 1.8rem rgb(2 6 23 / 34%);
+}
+
+.editorial-card .text-white {
+  color: #f8fafc !important;
+}
+
+.editorial-card .text-slate-400,
+.editorial-card .text-slate-300 {
+  color: #cbd5e1 !important;
+}
+
+.editorial-card .border-slate-700,
+.editorial-card .border-slate-700\/80 {
+  border-color: rgb(71 85 105 / 85%) !important;
+}
+
+.editorial-card label {
+  border-color: rgb(100 116 139 / 90%) !important;
+  background: rgb(15 23 42 / 78%) !important;
+}
+
+.editorial-card .calendar-arrow {
+  border-color: rgb(71 85 105);
+  background: rgb(15 23 42 / 82%);
+  color: rgb(254 202 202);
+}
+
+.editorial-card .calendar-arrow:hover {
+  border-color: rgb(239 68 68);
+  background: rgb(69 10 10 / 82%);
+}
+
+.editorial-card .calendar-day,
+.editorial-card .calendar-event-date {
+  color: rgb(203 213 225);
 }
 
 .twinkle-star {
   position: absolute;
   border-radius: 9999px;
   background: #f8fafc;
-  box-shadow: 0 0 7px 1px rgb(186 230 253 / 75%);
+  box-shadow: 0 0 7px 1px rgb(255 255 255 / 75%);
   animation: twinkle 3.2s ease-in-out infinite;
 }
 
@@ -35,13 +106,13 @@ body {
   border: 1px solid rgb(71 85 105);
   border-radius: 0.45rem;
   background: rgb(15 23 42 / 0.82);
-  color: rgb(186 230 253);
+  color: rgb(254 202 202);
   transition: border-color 160ms ease, background 160ms ease;
 }
 
 .calendar-arrow:hover {
-  border-color: rgb(34 211 238);
-  background: rgb(8 47 73 / 0.82);
+  border-color: rgb(239 68 68);
+  background: rgb(69 10 10 / 0.82);
 }
 
 .calendar-day {
@@ -53,6 +124,10 @@ body {
   gap: 0.18rem;
   border-radius: 0.4rem;
   color: rgb(203 213 225);
+}
+
+.calendar-blank {
+  min-height: 2.55rem;
 }
 
 .calendar-event-date {
@@ -69,7 +144,7 @@ body {
   height: 0.3rem;
   width: 1.45rem;
   border-radius: 9999px;
-  box-shadow: 0 0 0.65rem rgb(103 232 249 / 45%);
+  box-shadow: 0 0 0.65rem rgb(248 113 113 / 45%);
   transition: transform 160ms ease, filter 160ms ease;
 }
 
@@ -80,7 +155,7 @@ body {
 }
 
 .calendar-event-date:focus-visible {
-  outline: 2px solid rgb(224 242 254);
+  outline: 2px solid rgb(254 202 202);
   outline-offset: 2px;
 }
 

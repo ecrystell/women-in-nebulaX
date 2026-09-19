@@ -33,6 +33,7 @@ from app.domain.models import (
 )
 from app.exports.csv_writer import ACCESS_HEADERS, OCCUPANCY_HEADERS, RESULT_HEADERS
 from app.ingestion.csv_loader import load_instance
+from app.domain.preprocessing import PreparedInstance, PreparationFinding
 from app.validation.adapter import OfficialValidatorAdapter, ValidationReport
 
 
@@ -165,6 +166,9 @@ class _Preflight:
         activity_ids: Iterable[str] | None = None,
         location_ids: Iterable[str] | None = None,
         week: int | None = None,
+        co_share_group: str | None = None,
+        derived_footprint: Iterable[str] | None = None,
+        input_values: dict[str, str | int | float | bool | None] | None = None,
     ) -> None:
         violation: dict[str, object] = {"rule": rule, "severity": "hard", "detail": detail}
         if activity_ids:
@@ -173,6 +177,12 @@ class _Preflight:
             violation["location_ids"] = sorted(set(location_ids))
         if week:
             violation["week"] = week
+        if co_share_group:
+            violation["co_share_group"] = co_share_group
+        if derived_footprint:
+            violation["derived_footprint"] = sorted(set(derived_footprint))
+        if input_values:
+            violation["input_values"] = input_values
         self.violations.append(violation)
 
     def route_for(self, activity: ActivityRecord) -> _Route | None:
@@ -409,7 +419,20 @@ class _Preflight:
                     parts.append(f"missing {sorted(missing)}")
                 if extra:
                     parts.append(f"unexpected {sorted(extra)}")
-                self.add("topology", f"{activity_id} occupancy footprint is invalid: {'; '.join(parts)}.", activity_ids=[activity_id], location_ids=expected | actual, week=week)
+                self.add(
+                    "topology",
+                    f"{activity_id} occupancy footprint is invalid: {'; '.join(parts)}.",
+                    activity_ids=[activity_id],
+                    location_ids=expected | actual,
+                    week=week,
+                    derived_footprint=expected,
+                    input_values={
+                        "expected_location_count": len(expected),
+                        "observed_location_count": len(actual),
+                        "missing_location_count": len(missing),
+                        "unexpected_location_count": len(extra),
+                    },
+                )
         return groups_by_activity_week, accesses_by_activity
 
     def validate_workload_dates_and_precedence(self, accesses_by_activity: dict[str, list[AccessAssignment]]) -> None:
@@ -526,20 +549,26 @@ class _Preflight:
         for contract, project in self.projects.items():
             actual = completion_by_contract.get(contract)
             result = results_by_contract.get(contract)
+            contract_overrun = (
+                max(0, (actual - project.planned_completion_date).days)
+                if actual
+                else 0
+            )
             if actual and result:
-                expected_overrun = max(0, (actual - project.planned_completion_date).days)
-                if result.simulated_completion_date != actual or result.overrun_days != expected_overrun:
-                    self.add("results", f"{contract} RESULTS must report completion {actual.isoformat()} and overrun {expected_overrun} days.")
-                if self.schedule.scenario == Scenario.B and expected_overrun:
-                    self.add("planned_date", f"Scenario B contract {contract} completes {expected_overrun} days after its planned completion date.")
-                priority_overrun[str(project.contract_priority)] += expected_overrun
+                if result.simulated_completion_date != actual or result.overrun_days != contract_overrun:
+                    self.add("results", f"{contract} RESULTS must report completion {actual.isoformat()} and overrun {contract_overrun} days.")
+                if self.schedule.scenario == Scenario.B and contract_overrun:
+                    self.add("planned_date", f"Scenario B contract {contract} completes {contract_overrun} days after its planned completion date.")
+                priority_overrun[str(project.contract_priority)] += contract_overrun
             for activity in self.instance.activities:
-                if activity.contract_number != contract or activity.activity_id not in completion_by_activity:
+                if activity.contract_number != contract:
                     continue
-                activity_overrun = max(0, (completion_by_activity[activity.activity_id] - project.planned_completion_date).days)
                 multiplier = {1: 0.3, 2: 0.2, 3: 0.0}[activity.activity_priority]
                 base_weight = {1: 100, 2: 10, 3: 1}[project.contract_priority]
-                priority_weighted_score += base_weight * (1 + multiplier) * activity_overrun
+                # The organiser applies the contract's final overrun to every
+                # activity-priority nudge in that contract. Scoring each
+                # activity's own finish date understates the published score.
+                priority_weighted_score += base_weight * (1 + multiplier) * contract_overrun
         excess_total = sum(
             max(0, count - self.supply_capacity(location, week))
             for (location, week), count in possession_count.items()
@@ -583,13 +612,46 @@ class _Preflight:
         return report
 
 
+def preparation_report(findings: tuple[PreparationFinding, ...]) -> ValidationReport:
+    """Expose shared preprocessing findings without implying organiser verification."""
+
+    report = OfficialValidatorAdapter().local_contract_check()
+    report.message = (
+        "Local preflight could not evaluate a schedule because shared preprocessing found "
+        f"{len(findings)} hard input violation(s). This result is unverified."
+    )
+    report.hard_violations = [
+        {
+            "rule": finding.rule,
+            "severity": "hard",
+            "detail": finding.detail,
+            "source_file": finding.source_file,
+            "row": finding.row,
+            "field": finding.field,
+            "activity_ids": list(finding.activity_ids),
+            "location_ids": list(finding.location_ids),
+            "week": finding.week,
+        }
+        for finding in findings
+    ]
+    report.detail = {
+        "preflight_version": "1",
+        "implemented_rules": ["shared_preprocessing"],
+        "derived_closure_rules": [],
+        "warnings": ["Schedule-derived checks were skipped because the input package is inconsistent."],
+    }
+    return report
+
+
 def validate_schedule(
-    instance: InstanceBundle,
+    instance: InstanceBundle | PreparedInstance,
     schedule: ScenarioSchedule,
     supply_overrides: dict[tuple[str, int], int] | None = None,
 ) -> ValidationReport:
     """Validate a typed schedule against a typed input bundle locally."""
 
+    if isinstance(instance, PreparedInstance):
+        instance = instance.instance
     return _Preflight(instance, schedule, supply_overrides).run()
 
 

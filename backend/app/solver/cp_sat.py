@@ -36,6 +36,21 @@ class SolveError(RuntimeError):
     """The instance is invalid or CP-SAT did not produce a complete schedule."""
 
 
+class SolverError(SolveError):
+    """Compatibility error exposed by the shared solver adapter."""
+
+
+class SolverDependencyError(SolverError):
+    """A required optimisation dependency is unavailable."""
+
+
+def _sum(values):
+    """Return a CP-SAT linear sum while handling an empty collection."""
+
+    values = list(values)
+    return sum(values) if values else 0
+
+
 @dataclass(frozen=True)
 class SolverConfig:
     max_time_seconds: float = 120.0
@@ -437,6 +452,112 @@ class CpSatRailSolver:
             sample = "; ".join(str(item["detail"]) for item in report.hard_violations[:5])
             raise SolveError(f"internal post-solve validation failed: {sample}")
         return schedule
+
+
+@dataclass(frozen=True)
+class SolveDiagnostics:
+    status: str
+    objective_value_scaled: float
+    best_objective_bound_scaled: float
+    relative_gap: float
+    weighted_score: float
+    solve_seconds: float
+    activity_count: int
+    scheduled_access_rows: int
+    occupancy_rows: int
+    contract_count: int
+
+
+@dataclass(frozen=True)
+class SolveResult:
+    schedule: ScenarioSchedule
+    diagnostics: SolveDiagnostics
+
+
+class ScenarioASolver:
+    """Compatibility facade for the API/CLI Scenario A solver contract."""
+
+    def __init__(
+        self,
+        *,
+        time_limit_seconds: float = 60.0,
+        random_seed: int = 0,
+        num_search_workers: int = 8,
+        initial_schedule: ScenarioSchedule | None = None,
+    ) -> None:
+        self.config = SolverConfig(
+            max_time_seconds=time_limit_seconds,
+            workers=num_search_workers,
+            random_seed=random_seed,
+        )
+        self.initial_schedule = initial_schedule
+        self.last_result: SolveResult | None = None
+
+    def solve(
+        self,
+        instance: InstanceBundle,
+        scenario: Scenario = Scenario.A,
+        scenario_change: ScenarioChange | None = None,
+    ) -> ScenarioSchedule:
+        return self.solve_with_diagnostics(instance, scenario, scenario_change).schedule
+
+    def solve_with_diagnostics(
+        self,
+        instance: InstanceBundle,
+        scenario: Scenario = Scenario.A,
+        scenario_change: ScenarioChange | None = None,
+    ) -> SolveResult:
+        from app.domain.preprocessing import require_prepared
+
+        return self.solve_prepared_with_diagnostics(
+            require_prepared(instance), scenario, scenario_change
+        )
+
+    def solve_prepared_with_diagnostics(
+        self,
+        prepared,
+        scenario: Scenario = Scenario.A,
+        scenario_change: ScenarioChange | None = None,
+    ) -> SolveResult:
+        if scenario is not Scenario.A:
+            raise SolverError(
+                f"ScenarioASolver requires Scenario A, received {scenario.value}."
+            )
+        solver = CpSatRailSolver(self.config)
+        try:
+            schedule = solver.solve_bundle(
+                prepared.instance,
+                scenario,
+                scenario_change,
+                baseline=self.initial_schedule,
+            )
+        except SolveError as error:
+            raise SolverError(str(error)) from error
+
+        from app.solver.scoring import scenario_a_score
+
+        score = float(
+            scenario_a_score(
+                prepared.instance, schedule, calendar=prepared.calendar
+            )
+        )
+        scaled = score * 10
+        status = solver.last_status or "FEASIBLE"
+        diagnostics = SolveDiagnostics(
+            status=status,
+            objective_value_scaled=scaled,
+            best_objective_bound_scaled=scaled if status == "OPTIMAL" else 0.0,
+            relative_gap=0.0 if status == "OPTIMAL" else 1.0,
+            weighted_score=score,
+            solve_seconds=float(solver.last_wall_time_seconds or 0.0),
+            activity_count=len(prepared.activities),
+            scheduled_access_rows=len(schedule.access_assignments),
+            occupancy_rows=len(schedule.occupancy_assignments),
+            contract_count=len(schedule.contract_results),
+        )
+        result = SolveResult(schedule=schedule, diagnostics=diagnostics)
+        self.last_result = result
+        return result
 
 
 def main() -> int:

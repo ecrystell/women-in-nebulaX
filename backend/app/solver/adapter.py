@@ -14,6 +14,12 @@ from .scenario_c import ScenarioCSolver
 class CpSatSolverAdapter:
     """Implement the existing RunService solver protocol for Scenario A/C."""
 
+    # Capabilities intentionally advertise only the production-gated path.
+    # Scenario C remains callable by the explicit adapter regression while its
+    # public API gate stays disabled until organiser evidence is recorded.
+    supported_scenarios = (Scenario.A,)
+    supports_recovery = False
+
     def __init__(self, *, time_limit_seconds: float = 60.0) -> None:
         self.solvers = {
             Scenario.A: ScenarioASolver(time_limit_seconds=time_limit_seconds),

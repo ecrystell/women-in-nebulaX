@@ -1,12 +1,9 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import { railAccessApi, RailAccessApiError } from "./api/client";
+import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft } from "./api/types";
 import { TrainScene } from "./TrainScene";
-
-type Health = {
-  status: string;
-  validator_status: string;
-};
-
-type Scenario = "A" | "B" | "C";
+import { GroundedCopilot } from "./GroundedCopilot";
+import { RecoverySandbox } from "./RecoverySandbox";
 
 type MaintenanceEvent = {
   id: string;
@@ -20,6 +17,8 @@ type MaintenanceEvent = {
   people: string;
   colour: string;
 };
+
+type PlannerPage = "overview" | "setup";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -37,7 +36,7 @@ const maintenanceEvents: MaintenanceEvent[] = [
     line: "ALP",
     time: "00:45–04:30",
     people: "12 engineering staff",
-    colour: "bg-cyan-400"
+    colour: "bg-red-500"
   },
   {
     id: "h01",
@@ -105,11 +104,11 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
   };
 
   return (
-    <section className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">01 · Network view</p>
-          <h2 className="mt-1 text-xl font-bold text-white">Dual-line track access topology</h2>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
+          <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Tracks overview</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
           <p><span className="mr-1 inline-block h-2 w-2 rounded-full bg-rose-400" />ALP · Red line</p>
@@ -168,17 +167,19 @@ function Calendar({
   onYearChange: (direction: number) => void;
   onEventHover: (event: MaintenanceEvent | null) => void;
 }) {
-  const daysInMonth = new Date(year, month + 1, 0).getDate();
-  const firstWeekday = new Date(year, month, 1).getDay();
-  const cells = Array.from({ length: firstWeekday + daysInMonth }, (_, index) => index - firstWeekday + 1);
+  // Use UTC so the official Gregorian layout is never shifted by a browser timezone.
+  const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
+  const leadingBlanks = Array.from({ length: firstWeekday }, (_, index) => index);
+  const calendarDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
 
   const eventForDay = (day: number) => maintenanceEvents.find(
     (event) => event.day === day && event.month === month && event.year === year
   );
 
   return (
-    <section className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">02 · Maintenance calendar</p>
+    <section className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
@@ -196,13 +197,15 @@ function Calendar({
         {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
           <span key={day} className="pb-1 text-slate-500">{day}</span>
         ))}
-        {cells.map((day, index) => {
-          if (day < 1) return <span key={index} />;
+        {leadingBlanks.map((index) => (
+          <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
+        ))}
+        {calendarDays.map((day) => {
           const event = eventForDay(day);
           return (
             event ? (
               <button
-                key={day}
+                key={`date-${day}`}
                 aria-label={`${day} ${months[month]}: ${event.title}`}
                 className="calendar-day calendar-event-date"
                 onMouseEnter={() => onEventHover(event)}
@@ -214,7 +217,7 @@ function Calendar({
                 <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
               </button>
             ) : (
-              <div key={day} className="calendar-day"><span>{day}</span></div>
+              <div key={`date-${day}`} className="calendar-day"><span>{day}</span></div>
             )
           );
         })}
@@ -224,7 +227,7 @@ function Calendar({
         {activeEvent ? (
           <div>
             <p className="font-semibold text-white">{activeEvent.title}</p>
-            <p className="mt-1 text-sm text-cyan-200">{activeEvent.station} · {activeEvent.line} · {activeEvent.time}</p>
+            <p className="mt-1 text-sm text-red-200">{activeEvent.station} · {activeEvent.line} · {activeEvent.time}</p>
             <p className="mt-1 text-xs text-slate-400">{activeEvent.people}</p>
           </div>
         ) : (
@@ -260,7 +263,7 @@ function UploadDropzone({
   return (
     <label
       htmlFor={id}
-      className={`block cursor-pointer rounded-xl border border-dashed p-4 transition ${dragging ? "border-cyan-300 bg-cyan-300/10" : "border-slate-600 bg-slate-900/60 hover:border-cyan-400/70"}`}
+      className={`block cursor-pointer rounded-xl border border-dashed p-4 transition ${dragging ? "border-red-400 bg-red-500/10" : "border-slate-600 bg-slate-900/60 hover:border-red-500/70"}`}
       onDragEnter={(event) => { event.preventDefault(); setDragging(true); }}
       onDragOver={(event) => event.preventDefault()}
       onDragLeave={() => setDragging(false)}
@@ -279,16 +282,155 @@ function UploadDropzone({
         onChange={(event) => receiveFiles(Array.from(event.target.files ?? []))}
       />
       <div className="flex gap-3">
-        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-cyan-400/15 text-xl text-cyan-200">↓</span>
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/15 text-xl text-red-200">↓</span>
         <div>
           <p className="font-semibold text-white">{title}</p>
           <p className="mt-1 text-xs leading-5 text-slate-400">{description}</p>
-          <p className="mt-2 text-xs font-semibold text-cyan-200">
+          <p className="mt-2 text-xs font-semibold text-red-200">
             {files.length ? `${files.length} CSV file${files.length === 1 ? "" : "s"} selected` : "Drop CSV files here or browse"}
           </p>
         </div>
       </div>
     </label>
+  );
+}
+
+const publicScheduleFiles = [
+  { name: "SCHEDULE_ACCESS.csv", description: "Activity access placement by week" },
+  { name: "SCHEDULE_OCCUPANCY.csv", description: "Location and slot assignments" },
+  { name: "RESULTS.csv", description: "Contract completion summary" }
+] as const;
+
+function PublicScheduleDownloads() {
+  return (
+    <section className="editorial-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
+      <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+        <div>
+          <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Schedule files</h2>
+          <p className="mt-1 text-sm text-slate-400">Download the schedules for the provided dataset.</p>
+        </div>
+        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-500">CSV · Scenario A</span>
+      </div>
+      <div className="mt-4 grid gap-2 md:grid-cols-3">
+        {publicScheduleFiles.map((file) => (
+          <a
+            key={file.name}
+            href={railAccessApi.getPublicScheduleUrl(file.name)}
+            className="group rounded-xl border border-slate-700 bg-slate-900/70 p-3 transition hover:border-red-400 hover:bg-red-500/10"
+          >
+            <p className="font-mono text-sm font-bold text-white">{file.name}</p>
+            <p className="mt-1 text-xs text-slate-400">{file.description}</p>
+            <p className="mt-3 text-xs font-bold text-red-200 group-hover:text-red-100">Download CSV ↓</p>
+          </a>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function SubmissionEvidencePanel({
+  run,
+  busy,
+  notice,
+  onCreatePackage,
+  onRecordEvidence
+}: {
+  run: RunView | null;
+  busy: boolean;
+  notice: string;
+  onCreatePackage: () => Promise<void>;
+  onRecordEvidence: (packageId: string, payload: OrganiserEvidenceInput) => Promise<void>;
+}) {
+  const [attemptNumber, setAttemptNumber] = useState(1);
+  const [submittedAt, setSubmittedAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [outcome, setOutcome] = useState<OrganiserReportedOutcome>("unknown");
+  const [reference, setReference] = useState("");
+  const [digest, setDigest] = useState("");
+  const [note, setNote] = useState("");
+  const localClean = !run?.demo && run?.status === "succeeded" && run.validation_report?.hard_violations.length === 0;
+  const latestPackage = run?.submission_packages.at(-1);
+
+  if (!run) return null;
+
+  return (
+    <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 · Organiser evidence</p>
+      <h2 className="mt-1 text-xl font-bold text-white">Manual submission package</h2>
+      <p className="mt-2 text-sm leading-6 text-slate-400">
+        Run {run.run_id.slice(0, 8)} · {run.status}. Local result: {run.validation_report?.status ?? "unavailable"}.
+      </p>
+      {run.validation_report && (
+        <p className="mt-2 text-xs leading-5 text-amber-100">
+          {run.validation_report.message} Organiser feedback recorded here remains unverified until a supported organiser report integration exists.
+        </p>
+      )}
+      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">Public demonstration runs cannot create submission packages, exports, or organiser evidence.</p>}
+      {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
+      {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
+
+      {!localClean ? (
+        <p className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-400">
+          Submission packages are available only after a locally clean succeeded run. Blocked Scenario B/C runs and failed candidates cannot be downloaded for submission.
+        </p>
+      ) : (
+        <div className="mt-4 space-y-4">
+          <button
+            disabled={busy}
+            onClick={() => void onCreatePackage()}
+            className="rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+          >
+            Create manual upload ZIP
+          </button>
+
+          {run.submission_packages.map((submissionPackage) => (
+            <div key={submissionPackage.package_id} className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm">
+              <p className="font-semibold text-white">Package {submissionPackage.package_id.slice(0, 8)} · commit {submissionPackage.build_commit.slice(0, 12)}</p>
+              <div className="mt-2 flex flex-wrap gap-3 text-red-200">
+                <a href={railAccessApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
+                {submissionPackage.organiser_evidence && (
+                  <a href={railAccessApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
+                )}
+              </div>
+              {submissionPackage.organiser_evidence && (
+                <p className="mt-2 text-xs text-slate-300">Attempt {submissionPackage.organiser_evidence.attempt_number}: {submissionPackage.organiser_evidence.reported_outcome} (locally unverified).</p>
+              )}
+            </div>
+          ))}
+
+          {latestPackage && !latestPackage.organiser_evidence && (
+            <form
+              className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4"
+              onSubmit={(event) => {
+                event.preventDefault();
+                const submitted = new Date(submittedAt);
+                if (Number.isNaN(submitted.valueOf())) return;
+                void onRecordEvidence(latestPackage.package_id, {
+                  attempt_number: attemptNumber,
+                  submitted_at: submitted.toISOString(),
+                  reported_outcome: outcome,
+                  report_reference: reference.trim() || undefined,
+                  report_sha256: digest.trim() || undefined,
+                  note: note.trim() || undefined
+                });
+              }}
+            >
+              <p className="font-semibold text-amber-100">After the manual organiser upload</p>
+              <p className="mt-1 text-xs leading-5 text-slate-400">Record reference metadata only—do not upload screenshots or paste a raw organiser report.</p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-slate-300">Attempt (1–5)<input value={attemptNumber} min="1" max="5" type="number" onChange={(event) => setAttemptNumber(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+                <label className="text-xs text-slate-300">Submitted at<input value={submittedAt} type="datetime-local" onChange={(event) => setSubmittedAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+                <label className="text-xs text-slate-300">Reported outcome<select value={outcome} onChange={(event) => setOutcome(event.target.value as OrganiserReportedOutcome)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"><option value="unknown">Unknown</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select></label>
+                <label className="text-xs text-slate-300">Report or screenshot reference<input value={reference} maxLength={500} onChange={(event) => setReference(event.target.value)} placeholder="e.g. organiser-result-1.png" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+              </div>
+              <label className="mt-3 block text-xs text-slate-300">Optional SHA-256 digest<input value={digest} maxLength={64} onChange={(event) => setDigest(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+              <label className="mt-3 block text-xs text-slate-300">Short note<textarea value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
+              <button disabled={busy} className="mt-3 rounded-xl border border-amber-300/50 bg-amber-300/10 px-4 py-2 font-bold text-amber-100 disabled:cursor-not-allowed disabled:text-slate-500">Record metadata</button>
+            </form>
+          )}
+        </div>
+      )}
+    </section>
   );
 }
 
@@ -300,11 +442,11 @@ function CopilotButton() {
   return (
     <div className="fixed bottom-5 right-5 z-30">
       {open && (
-        <section className="mb-3 w-80 rounded-2xl border border-cyan-300/30 bg-slate-950/95 p-4 shadow-2xl shadow-cyan-950/50 backdrop-blur">
+        <section className="mb-3 w-80 rounded-2xl border border-red-400/30 bg-slate-950/95 p-4 shadow-2xl shadow-red-950/50 backdrop-blur">
           <div className="flex items-center justify-between">
             <div>
               <p className="text-sm font-bold text-white">RailAccess Copilot</p>
-              <p className="text-xs text-cyan-200">Grounded schedule assistant</p>
+              <p className="text-xs text-red-200">Grounded schedule assistant</p>
             </div>
             <button className="text-slate-400 hover:text-white" onClick={() => setOpen(false)} aria-label="Close copilot">×</button>
           </div>
@@ -325,20 +467,20 @@ function CopilotButton() {
               value={prompt}
               onChange={(event) => setPrompt(event.target.value)}
               placeholder="Ask the copilot…"
-              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-cyan-400"
+              className="min-w-0 flex-1 rounded-lg border border-slate-700 bg-slate-900 px-3 py-2 text-sm text-white outline-none placeholder:text-slate-500 focus:border-red-500"
             />
-            <button className="rounded-lg bg-cyan-400 px-3 py-2 text-sm font-bold text-slate-950">Send</button>
+            <button className="rounded-lg bg-red-500 px-3 py-2 text-sm font-bold text-white">Send</button>
           </form>
           <p className="mt-2 text-[11px] leading-4 text-slate-500">The Vertex/Gemini response route will be connected after solver results are available.</p>
         </section>
       )}
       <button
         onClick={() => setOpen((value) => !value)}
-        className="group flex h-15 items-center gap-2 rounded-full border border-cyan-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-cyan-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-cyan-200"
+        className="group flex h-15 items-center gap-2 rounded-full border border-red-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-red-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-red-200"
         aria-label="Open RailAccess Copilot"
       >
         <span className="text-2xl transition group-hover:translate-x-0.5">🚇</span>
-        <span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-cyan-100">Ask copilot</span>
+        <span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-red-100">Ask copilot</span>
       </button>
     </div>
   );
@@ -346,32 +488,129 @@ function CopilotButton() {
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
+  const [capabilities, setCapabilities] = useState<CapabilityReport | null>(null);
   const [month, setMonth] = useState(8);
   const [year, setYear] = useState(2026);
   const [activeEvent, setActiveEvent] = useState<MaintenanceEvent | null>(null);
   const [demandFiles, setDemandFiles] = useState<File[]>([]);
-  const [updateFiles, setUpdateFiles] = useState<File[]>([]);
-  const [scenario, setScenario] = useState<Scenario>("C");
-  const [refreshNotice, setRefreshNotice] = useState("Upload the demand book and select a scenario to prepare an optimisation run.");
+  const [scenario, setScenario] = useState<Scenario>("A");
+  const [page, setPage] = useState<PlannerPage>("overview");
+  const [refreshNotice, setRefreshNotice] = useState("Upload the eight CSV demand book, then select an available scenario to prepare an optimisation run.");
+  const [run, setRun] = useState<RunView | null>(null);
+  const [runBusy, setRunBusy] = useState(false);
 
   useEffect(() => {
-    fetch("/api/health")
-      .then((response) => response.json() as Promise<Health>)
+    railAccessApi.getHealth()
       .then(setHealth)
       .catch(() => setHealth(null));
+    railAccessApi.getCapabilities()
+      .then(setCapabilities)
+      .catch(() => setCapabilities(null));
   }, []);
 
   const validatorStatus = health?.validator_status ?? "checking";
   const demandBookReady = demandFiles.length === 8;
-  const monthLabel = useMemo(() => `${months[month]} ${year}`, [month, year]);
-
+  const scheduleInputReady = demandBookReady;
   const changeMonth = (direction: number) => {
-    setMonth((current) => (current + direction + 12) % 12);
+    const nextDate = new Date(Date.UTC(year, month + direction, 1));
+    setMonth(nextDate.getUTCMonth());
+    setYear(nextDate.getUTCFullYear());
+  };
+
+  const startRun = async () => {
+    if (!scheduleInputReady || runBusy) return;
+    const scenarioCapability = capabilities?.scenarios.find((item) => item.scenario === scenario);
+    if (!scenarioCapability?.available) {
+      setRefreshNotice(scenarioCapability?.message ?? "Checking the active solver capabilities. Please try again in a moment.");
+      return;
+    }
+    setRunBusy(true);
+    setRun(null);
+    const runFiles = demandFiles;
+    setRefreshNotice(`Uploading the eight CSV demand book for Scenario ${scenario}.`);
+    try {
+      let current = await railAccessApi.createRun(scenario, runFiles);
+      setRun(current);
+      for (let attempt = 0; attempt < 90 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+        current = await railAccessApi.getRun(current.run_id);
+        setRun(current);
+      }
+      setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
+      setDemandFiles([]);
+      setPage("overview");
+    } catch (error) {
+      const detail = error instanceof RailAccessApiError ? error.message : "The run could not be started.";
+      setRefreshNotice(detail);
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const openPublicDemo = async () => {
+    if (runBusy) return;
+    setRunBusy(true);
+    try {
+      const demo = await railAccessApi.createPublicDemoRun();
+      setRun(demo);
+      setRefreshNotice("Public recovery demonstration loaded. It is unverified and cannot be exported or submitted.");
+      setPage("overview");
+    } catch (error) {
+      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not open the public recovery demonstration.");
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const replayPublicDemo = async (draftId?: string) => {
+    if (!run || runBusy) return;
+    setRunBusy(true);
+    try {
+      setRun(await railAccessApi.createPublicDemoReplay(run.run_id, draftId));
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const createDisruptionDraft = async (text: string): Promise<ScenarioChangeDraft> => {
+    if (!run) throw new Error("Open the public recovery demonstration first.");
+    return railAccessApi.createDisruptionDraft(run.run_id, text);
+  };
+
+  const createSubmissionPackage = async () => {
+    if (!run || runBusy) return;
+    setRunBusy(true);
+    try {
+      const submissionPackage = await railAccessApi.createSubmissionPackage(run.run_id);
+      setRun((current) => current ? { ...current, submission_packages: [...current.submission_packages, submissionPackage] } : current);
+      setRefreshNotice("Manual upload ZIP created. Download it, submit it on the organiser website, then record reference metadata.");
+    } catch (error) {
+      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not create the submission package.");
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
+  const recordEvidence = async (packageId: string, payload: OrganiserEvidenceInput) => {
+    if (!run || runBusy) return;
+    setRunBusy(true);
+    try {
+      const updatedPackage = await railAccessApi.recordOrganiserEvidence(run.run_id, packageId, payload);
+      setRun((current) => current ? {
+        ...current,
+        submission_packages: current.submission_packages.map((item) => item.package_id === packageId ? updatedPackage : item)
+      } : current);
+      setRefreshNotice("Organiser metadata was recorded for this live run. Download the evidence JSON and keep it outside the repository.");
+    } catch (error) {
+      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not record organiser metadata.");
+    } finally {
+      setRunBusy(false);
+    }
   };
 
   return (
-    <main className="night-sky relative min-h-screen overflow-hidden px-4 py-6 text-slate-100 sm:px-8 sm:py-8">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-70">
+    <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-60">
         <TrainScene />
       </div>
       <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
@@ -380,101 +619,118 @@ export default function App() {
         ))}
       </div>
 
-      <section className="relative z-10 mx-auto max-w-7xl pb-28">
-        <header className="flex flex-col gap-5 border-b border-slate-700/80 pb-6 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <div className="flex items-center gap-3 text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">
-              <span className="h-px w-9 bg-cyan-400" />
-              RailAccess AI · Planner console
-            </div>
-            <h1 className="mt-3 text-3xl font-black tracking-tight text-white sm:text-5xl">Plan the night. Protect the first train.</h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300 sm:text-base">
-              An explainable control room for possession planning across the Alpha and Beta rail lines.
-            </p>
+      <section className="relative z-10 mx-auto max-w-7xl pb-20">
+        <header className="planner-toolbar">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h1 className="editorial-title text-lg font-bold tracking-[0.1em] text-white sm:text-2xl">MAINTENANCE SCHEDULE PLANNER</h1>
           </div>
-          <div className="flex flex-wrap gap-2 text-sm">
-            <span className="rounded-full border border-cyan-400/30 bg-cyan-400/10 px-3 py-1.5 font-semibold text-cyan-200">API {health?.status ?? "connecting"}</span>
-            <span className="rounded-full border border-amber-400/30 bg-amber-400/10 px-3 py-1.5 font-semibold text-amber-100">Validator: {validatorStatus}</span>
+          <div className="mt-2 flex flex-wrap justify-end gap-2 text-xs">
+            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">API {health?.status ?? "connecting"}</span>
+            <span className="rounded-md border border-red-500/30 bg-red-500/10 px-2.5 py-1 font-semibold text-red-200">Validator: {validatorStatus}</span>
           </div>
         </header>
 
-        <div className="mt-7 grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
-          <TrackDiagram activeStation={activeEvent?.station ?? null} />
-          <Calendar
-            month={month}
-            year={year}
-            activeEvent={activeEvent}
-            onMonthChange={changeMonth}
-            onYearChange={(direction) => setYear((current) => current + direction)}
-            onEventHover={setActiveEvent}
-          />
+        <div className="mt-3 flex justify-end">
+          <button
+            onClick={() => setPage((current) => current === "overview" ? "setup" : "overview")}
+            className="rounded-xl border border-red-300 bg-red-600 px-5 py-3 text-base font-bold text-white shadow-lg shadow-red-950/35 transition hover:bg-red-400"
+          >
+            {page === "overview" ? "Build / update schedule" : "← Tracks overview"}
+          </button>
         </div>
 
-        <section className="mt-5 grid gap-5 lg:grid-cols-[1fr_1fr_0.8fr]">
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">03 · Build schedule</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Demand-book upload</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
-            <div className="mt-4">
-              <UploadDropzone
-                id="demand-book"
-                title="Official demand book"
-                description="01_LINES through 08_ACTIVITY_DETAILS · CSV only"
-                files={demandFiles}
-                multiple
-                onFiles={setDemandFiles}
+        {page === "overview" ? (
+          <>
+            <div aria-hidden="true" className="train-viewpoint" />
+
+            <div className="mt-4 grid gap-3 xl:grid-cols-[1.08fr_0.92fr]">
+              <TrackDiagram activeStation={activeEvent?.station ?? null} />
+              <Calendar
+                month={month}
+                year={year}
+                activeEvent={activeEvent}
+                onMonthChange={changeMonth}
+                onYearChange={(direction) => setYear((current) => current + direction)}
+                onEventHover={setActiveEvent}
               />
             </div>
-            <p className={`mt-3 text-xs font-semibold ${demandBookReady ? "text-emerald-300" : "text-slate-500"}`}>
-              {demandBookReady ? "Demand book complete — ready for validation." : `${Math.max(0, 8 - demandFiles.length)} of 8 required files still needed.`}
-            </p>
-          </div>
-
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">04 · Update event</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Disruption upload</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Provide a single event CSV to adjust supply or introduce urgent work.</p>
-            <div className="mt-4">
-              <UploadDropzone
-                id="update-event"
-                title="Updated event CSV"
-                description="One approved scenario change · CSV only"
-                files={updateFiles}
-                multiple={false}
-                onFiles={setUpdateFiles}
-              />
+            <SubmissionEvidencePanel
+              run={run}
+              busy={runBusy}
+              notice=""
+              onCreatePackage={createSubmissionPackage}
+              onRecordEvidence={recordEvidence}
+            />
+            <PublicScheduleDownloads />
+            <RecoverySandbox
+              run={run}
+              capabilities={capabilities}
+              busy={runBusy}
+              onOpenDemo={openPublicDemo}
+              onReplay={replayPublicDemo}
+              onCreateDraft={createDisruptionDraft}
+            />
+          </>
+        ) : (
+          <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
+            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
+              <div className="mt-4">
+                <UploadDropzone
+                  id="demand-book"
+                  title="Official demand book"
+                  description="01_LINES through 08_ACTIVITY_DETAILS · CSV only"
+                  files={demandFiles}
+                  multiple
+                  onFiles={setDemandFiles}
+                />
+              </div>
+              <p className={`mt-3 text-xs font-semibold ${demandBookReady ? "text-emerald-300" : "text-slate-500"}`}>
+                {demandBookReady ? "Demand book complete — ready for validation." : `${Math.max(0, 8 - demandFiles.length)} of 8 required files still needed.`}
+              </p>
             </div>
-            <p className="mt-3 text-xs text-slate-500">Confirmed work will remain locked when the recovery optimiser is connected.</p>
-          </div>
 
-          <div className="rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-            <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05–06 · Optimise</p>
-            <h2 className="mt-1 text-xl font-bold text-white">Scenario control</h2>
-            <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
-            <div className="mt-4 grid grid-cols-3 gap-2">
-              {(["A", "B", "C"] as Scenario[]).map((option) => (
-                <button
-                  key={option}
-                  onClick={() => setScenario(option)}
-                  className={`rounded-lg border px-2 py-3 text-sm font-black transition ${scenario === option ? "border-cyan-300 bg-cyan-300 text-slate-950 shadow-lg shadow-cyan-400/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-cyan-500"}`}
-                >
-                  {option}
-                </button>
-              ))}
+            <div className="editorial-card rounded-2xl border border-cyan-300/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-cyan-300">05 · Recovery</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
+              <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-cyan-300/40 bg-cyan-300/10 px-4 py-3 text-sm font-bold text-cyan-100 transition hover:bg-cyan-300/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
+              <p className="mt-3 text-xs text-slate-500">{capabilities?.recovery.message ?? "Checking recovery capability…"}</p>
             </div>
-            <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
-            <button
-              disabled={!demandBookReady}
-              onClick={() => setRefreshNotice(`Preview refreshed for Scenario ${scenario} in ${monthLabel}. The optimiser endpoint will replace this demo state with a validated schedule.`)}
-              className="mt-5 w-full rounded-xl bg-cyan-400 px-4 py-3 font-bold text-slate-950 transition hover:bg-cyan-300 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-            >
-              Update optimal schedule
-            </button>
-            <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>
-          </div>
-        </section>
+
+            <div className="editorial-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Optimise</p>
+              <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
+              <div className="mt-4 grid grid-cols-3 gap-2">
+                {(["A", "B", "C"] as Scenario[]).map((option) => (
+                  <button
+                    key={option}
+                    disabled={!capabilities?.scenarios.find((item) => item.scenario === option)?.available || runBusy}
+                    title={capabilities?.scenarios.find((item) => item.scenario === option)?.message}
+                    onClick={() => setScenario(option)}
+                    className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+              <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
+              <button
+                disabled={!scheduleInputReady || runBusy || !capabilities?.scenarios.find((item) => item.scenario === scenario)?.available}
+                onClick={() => void startRun()}
+                className="mt-5 w-full rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
+              >
+                {runBusy ? "Running schedule…" : "Run schedule"}
+              </button>
+              <p className="mt-3 text-xs leading-5 text-slate-400">{refreshNotice}</p>
+            </div>
+          </section>
+        )}
       </section>
-      <CopilotButton />
+      <GroundedCopilot run={run} />
     </main>
   );
 }

@@ -49,6 +49,9 @@ def candidate_schedule(scenario: Scenario) -> ScenarioSchedule:
 
 
 class CleanSolver:
+    supported_scenarios = (Scenario.A,)
+    supports_recovery = True
+
     def __init__(self) -> None:
         self.changes: list[ScenarioChange | None] = []
         self.prepared_instances: list[PreparedInstance] = []
