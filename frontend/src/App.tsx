@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { forRailsApi, ForRailsApiError } from "./api/client";
-import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft, ScenarioChangeDraftUpdate } from "./api/types";
+import type { CapabilityReport, Health, RunView, Scenario, ScenarioChangeDraft, ScenarioChangeDraftUpdate } from "./api/types";
 import { TrainScene } from "./TrainScene";
 import { GroundedCopilot } from "./GroundedCopilot";
 import { RecoverySandbox } from "./RecoverySandbox";
@@ -452,106 +452,6 @@ function PublicScheduleDownloads() {
   );
 }
 
-function SubmissionEvidencePanel({
-  run,
-  busy,
-  notice,
-  onCreatePackage,
-  onRecordEvidence
-}: {
-  run: RunView | null;
-  busy: boolean;
-  notice: string;
-  onCreatePackage: () => Promise<void>;
-  onRecordEvidence: (packageId: string, payload: OrganiserEvidenceInput) => Promise<void>;
-}) {
-  const [attemptNumber, setAttemptNumber] = useState(1);
-  const [submittedAt, setSubmittedAt] = useState(() => new Date().toISOString().slice(0, 16));
-  const [outcome, setOutcome] = useState<OrganiserReportedOutcome>("unknown");
-  const [reference, setReference] = useState("");
-  const [digest, setDigest] = useState("");
-  const [note, setNote] = useState("");
-  const localClean = !run?.demo && run?.status === "succeeded" && run.validation_report?.hard_violations.length === 0;
-  const latestPackage = run?.submission_packages.at(-1);
-
-  if (!run) return null;
-
-  return (
-    <section className="editorial-card c151-card mt-5 rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 - Organiser check</p>
-      <h2 className="section-heading mt-1 text-xl font-bold text-white">Submission evidence</h2>
-      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">This is the final handoff before an organiser submission. Our local checker can flag known problems, but only the organiser website decides whether a schedule is feasible.</p>
-      <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold"><span className={`rounded-full border px-3 py-1.5 ${run.status === "succeeded" && run.validation_report?.hard_violations.length === 0 ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-slate-600 bg-slate-900 text-slate-300"}`}>Local checklist: {run.status === "succeeded" && run.validation_report?.hard_violations.length === 0 ? "clear" : "not ready"}</span><span className="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1.5 text-amber-100">Organiser decision: not checked</span><span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-slate-300">Run {run.run_id.slice(0, 8)}</span></div>
-      {run.validation_report && <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100">{run.validation_report.message} A locally clean result is still <b>unverified</b> until the three CSVs are uploaded to the organiser validator.</p>}
-      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100"><b>Public demo only.</b> It illustrates the workflow and cannot create a submission ZIP, exports, or organiser evidence.</p>}
-      {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
-      {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
-
-      {!localClean ? (
-        <p className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-400">
-          No upload ZIP is available yet. A real Scenario A run that finishes cleanly unlocks the three official CSVs in one package. Blocked Scenario B/C runs, failed runs, and public demos stay unavailable.
-        </p>
-      ) : (
-        <div className="mt-4 space-y-4">
-          <button
-            disabled={busy}
-            onClick={() => void onCreatePackage()}
-            className="rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
-          >
-            Create manual upload ZIP
-          </button>
-
-          {run.submission_packages.map((submissionPackage) => (
-            <div key={submissionPackage.package_id} className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm">
-              <p className="font-semibold text-white">Package {submissionPackage.package_id.slice(0, 8)} · commit {submissionPackage.build_commit.slice(0, 12)}</p>
-              <div className="mt-2 flex flex-wrap gap-3 text-red-200">
-                <a href={forRailsApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
-                {submissionPackage.organiser_evidence && (
-                  <a href={forRailsApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
-                )}
-              </div>
-              {submissionPackage.organiser_evidence && (
-                <p className="mt-2 text-xs text-slate-300">Attempt {submissionPackage.organiser_evidence.attempt_number}: {submissionPackage.organiser_evidence.reported_outcome} (locally unverified).</p>
-              )}
-            </div>
-          ))}
-
-          {latestPackage && !latestPackage.organiser_evidence && (
-            <form
-              className="rounded-xl border border-amber-400/30 bg-amber-400/5 p-4"
-              onSubmit={(event) => {
-                event.preventDefault();
-                const submitted = new Date(submittedAt);
-                if (Number.isNaN(submitted.valueOf())) return;
-                void onRecordEvidence(latestPackage.package_id, {
-                  attempt_number: attemptNumber,
-                  submitted_at: submitted.toISOString(),
-                  reported_outcome: outcome,
-                  report_reference: reference.trim() || undefined,
-                  report_sha256: digest.trim() || undefined,
-                  note: note.trim() || undefined
-                });
-              }}
-            >
-              <p className="font-semibold text-amber-100">After the manual organiser upload</p>
-              <p className="mt-1 text-xs leading-5 text-slate-400">Record reference metadata only—do not upload screenshots or paste a raw organiser report.</p>
-              <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                <label className="text-xs text-slate-300">Attempt (1–5)<input value={attemptNumber} min="1" max="5" type="number" onChange={(event) => setAttemptNumber(Number(event.target.value))} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-                <label className="text-xs text-slate-300">Submitted at<input value={submittedAt} type="datetime-local" onChange={(event) => setSubmittedAt(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-                <label className="text-xs text-slate-300">Reported outcome<select value={outcome} onChange={(event) => setOutcome(event.target.value as OrganiserReportedOutcome)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white"><option value="unknown">Unknown</option><option value="accepted">Accepted</option><option value="rejected">Rejected</option></select></label>
-                <label className="text-xs text-slate-300">Report or screenshot reference<input value={reference} maxLength={500} onChange={(event) => setReference(event.target.value)} placeholder="e.g. organiser-result-1.png" className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              </div>
-              <label className="mt-3 block text-xs text-slate-300">Optional SHA-256 digest<input value={digest} maxLength={64} onChange={(event) => setDigest(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              <label className="mt-3 block text-xs text-slate-300">Short note<textarea value={note} maxLength={2000} onChange={(event) => setNote(event.target.value)} className="mt-1 min-h-20 w-full rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-white" /></label>
-              <button disabled={busy} className="mt-3 rounded-xl border border-amber-300/50 bg-amber-300/10 px-4 py-2 font-bold text-amber-100 disabled:cursor-not-allowed disabled:text-slate-500">Record metadata</button>
-            </form>
-          )}
-        </div>
-      )}
-    </section>
-  );
-}
-
 function CopilotButton() {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -717,37 +617,6 @@ export default function App() {
     }
   };
 
-  const createSubmissionPackage = async () => {
-    if (!run || runBusy) return;
-    setRunBusy(true);
-    try {
-      const submissionPackage = await forRailsApi.createSubmissionPackage(run.run_id);
-      setRun((current) => current ? { ...current, submission_packages: [...current.submission_packages, submissionPackage] } : current);
-      setRefreshNotice("Manual upload ZIP created. Download it, submit it on the organiser website, then record reference metadata.");
-    } catch (error) {
-      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not create the submission package.");
-    } finally {
-      setRunBusy(false);
-    }
-  };
-
-  const recordEvidence = async (packageId: string, payload: OrganiserEvidenceInput) => {
-    if (!run || runBusy) return;
-    setRunBusy(true);
-    try {
-      const updatedPackage = await forRailsApi.recordOrganiserEvidence(run.run_id, packageId, payload);
-      setRun((current) => current ? {
-        ...current,
-        submission_packages: current.submission_packages.map((item) => item.package_id === packageId ? updatedPackage : item)
-      } : current);
-      setRefreshNotice("Organiser metadata was recorded for this live run. Download the evidence JSON and keep it outside the repository.");
-    } catch (error) {
-      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not record organiser metadata.");
-    } finally {
-      setRunBusy(false);
-    }
-  };
-
   return (
     <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
       <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-60">
@@ -790,13 +659,6 @@ export default function App() {
                 onEventHover={setActiveEvent}
               />
             </div>
-            <SubmissionEvidencePanel
-              run={run}
-              busy={runBusy}
-              notice=""
-              onCreatePackage={createSubmissionPackage}
-              onRecordEvidence={recordEvidence}
-            />
             <PublicScheduleDownloads />
             <RecoverySandbox
               run={run}
