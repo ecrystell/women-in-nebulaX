@@ -19,6 +19,7 @@ type MaintenanceEvent = {
 };
 
 type PlannerPage = "overview" | "setup";
+type CalendarView = "month" | "week" | "day";
 
 const months = [
   "January", "February", "March", "April", "May", "June",
@@ -167,20 +168,45 @@ function Calendar({
   onYearChange: (direction: number) => void;
   onEventHover: (event: MaintenanceEvent | null) => void;
 }) {
+  const [view, setView] = useState<CalendarView>("month");
+  const [focusedDay, setFocusedDay] = useState(1);
   // Use UTC so the official Gregorian layout is never shifted by a browser timezone.
   const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  const selectedDay = Math.min(focusedDay, daysInMonth);
+  const focusedDate = new Date(Date.UTC(year, month, selectedDay));
   const firstWeekday = new Date(Date.UTC(year, month, 1)).getUTCDay();
   const leadingBlanks = Array.from({ length: firstWeekday }, (_, index) => index);
   const calendarDays = Array.from({ length: daysInMonth }, (_, index) => index + 1);
+  const weekStart = new Date(Date.UTC(year, month, selectedDay - focusedDate.getUTCDay()));
+  const weekDates = Array.from({ length: 7 }, (_, index) => new Date(Date.UTC(
+    weekStart.getUTCFullYear(),
+    weekStart.getUTCMonth(),
+    weekStart.getUTCDate() + index
+  )));
+  const dayHours = ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00"];
 
   const eventForDay = (day: number) => maintenanceEvents.find(
     (event) => event.day === day && event.month === month && event.year === year
   );
+  const eventForDate = (date: Date) => maintenanceEvents.find(
+    (event) => event.day === date.getUTCDate()
+      && event.month === date.getUTCMonth()
+      && event.year === date.getUTCFullYear()
+  );
+  const focusedEvents = maintenanceEvents.filter(
+    (event) => event.day === selectedDay && event.month === month && event.year === year
+  );
+  const eventHandlers = (event: MaintenanceEvent) => ({
+    onMouseEnter: () => onEventHover(event),
+    onFocus: () => onEventHover(event),
+    onMouseLeave: () => onEventHover(null),
+    onBlur: () => onEventHover(null),
+  });
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
-      <div className="mt-3 flex items-center justify-between gap-3">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
           <span className="min-w-28 text-center font-bold text-white">{months[month]}</span>
@@ -191,37 +217,89 @@ function Calendar({
           <span className="min-w-12 text-center font-bold text-white">{year}</span>
           <button className="calendar-arrow" onClick={() => onYearChange(1)} aria-label="Next year">→</button>
         </div>
+        <div className="flex rounded-lg border border-slate-700 bg-slate-950/80 p-0.5" aria-label="Calendar view">
+          {(["day", "week", "month"] as CalendarView[]).map((option) => (
+            <button
+              key={option}
+              onClick={() => setView(option)}
+              className={`rounded-md px-2.5 py-1 text-xs font-bold capitalize transition ${view === option ? "bg-red-500 text-white shadow-sm" : "text-slate-400 hover:text-slate-100"}`}
+            >
+              {option}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <div className="mt-5 grid grid-cols-7 gap-1 text-center text-xs">
-        {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
-          <span key={day} className="pb-1 text-slate-500">{day}</span>
-        ))}
-        {leadingBlanks.map((index) => (
-          <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
-        ))}
-        {calendarDays.map((day) => {
-          const event = eventForDay(day);
-          return (
-            event ? (
+      {view === "month" && (
+        <div className="mt-5 grid grid-cols-7 gap-1 text-center text-xs">
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((day) => (
+            <span key={day} className="pb-1 text-slate-500">{day}</span>
+          ))}
+          {leadingBlanks.map((index) => (
+            <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
+          ))}
+          {calendarDays.map((day) => {
+            const event = eventForDay(day);
+            return (
               <button
                 key={`date-${day}`}
-                aria-label={`${day} ${months[month]}: ${event.title}`}
-                className="calendar-day calendar-event-date"
-                onMouseEnter={() => onEventHover(event)}
-                onFocus={() => onEventHover(event)}
-                onMouseLeave={() => onEventHover(null)}
-                onBlur={() => onEventHover(null)}
+                aria-label={event ? `${day} ${months[month]}: ${event.title}` : `${day} ${months[month]}`}
+                className={`calendar-day calendar-event-date ${day === selectedDay ? "bg-slate-800/70 ring-1 ring-slate-600" : ""}`}
+                onClick={() => setFocusedDay(day)}
+                {...(event ? eventHandlers(event) : {})}
               >
                 <span className="font-bold">{day}</span>
-                <span className={`calendar-event ${event.colour}`} aria-hidden="true" />
+                {event && <span className={`calendar-event ${event.colour}`} aria-hidden="true" />}
               </button>
-            ) : (
-              <div key={`date-${day}`} className="calendar-day"><span>{day}</span></div>
-            )
-          );
-        })}
-      </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "week" && (
+        <div className="mt-5 grid grid-cols-7 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70 text-center">
+          {weekDates.map((date) => {
+            const event = eventForDate(date);
+            const isFocused = date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === selectedDay;
+            return (
+              <div key={date.toISOString()} className={`min-h-32 border-r border-slate-800 px-1 py-2 last:border-r-0 ${isFocused ? "bg-slate-800/70" : ""}`}>
+                <p className="text-[10px] font-bold uppercase text-slate-500">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()]}</p>
+                <p className="mt-1 text-sm font-bold text-white">{date.getUTCDate()}</p>
+                {event && (
+                  <button {...eventHandlers(event)} onClick={() => setFocusedDay(event.day)} className={`mt-3 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
+                    <span className="block opacity-80">{event.time}</span>
+                    <span className="mt-1 block">{event.title}</span>
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {view === "day" && (
+        <div className="mt-5 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70">
+          <div className="border-b border-slate-700 px-3 py-2 text-sm font-bold text-white">
+            {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][focusedDate.getUTCDay()]}, {months[month]} {selectedDay}
+          </div>
+          {dayHours.map((hour) => {
+            const eventsAtHour = focusedEvents.filter((event) => event.time.slice(0, 2) === hour.slice(0, 2));
+            return (
+              <div key={hour} className="grid min-h-11 grid-cols-[3.5rem_1fr] border-b border-slate-800 last:border-b-0">
+                <span className="border-r border-slate-800 px-2 py-2 text-xs font-semibold text-slate-500">{hour}</span>
+                <div className="p-1.5">
+                  {eventsAtHour.map((event) => (
+                    <button key={event.id} {...eventHandlers(event)} className={`w-full rounded-md ${event.colour} px-2 py-1.5 text-left text-xs font-bold text-white`}>
+                      {event.title} <span className="font-medium opacity-80">· {event.time}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {!focusedEvents.length && <p className="px-4 py-5 text-sm text-slate-500">No scheduled maintenance for this day.</p>}
+        </div>
+      )}
 
       <div className="mt-5 rounded-xl border border-slate-700 bg-slate-900/80 p-3">
         {activeEvent ? (
