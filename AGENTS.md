@@ -447,6 +447,22 @@ workflow; this app never assigns organiser verification.
 
 **Done when:** one container can accept a fresh eight-CSV instance, run the real solver, display truthful evidence, and export the selected scenario safely.
 
+**2026-09-19 public Cloud Run proof:** Revision `for-rails-00010-9kx` is
+serving build `43f1a65d5b5f129c185dab32d57aa2dbed029831` at
+`https://for-rails-t5yvacd4jq-uc.a.run.app`. It uses the dedicated
+`for-rails-runtime` identity, 600-second request timeout, one concurrent
+request/instance, secure run cookies, and a 30-minute in-memory expiry. Fresh
+public eight-CSV A, B, and C runs each returned a scenario-matched `FEASIBLE`
+candidate at the 300-second budget, with zero local hard violations and
+`unverified` status; the A export headers matched all three official contracts.
+A bounded live-C Vertex request produced a ready draft for a one-week supply
+override, and confirmed C recovery returned `OPTIMAL` in 1.74 seconds with
+`incumbent_not_worse`, zero local hard violations, and a schedule diff. The
+activity, hotspot, and handover copilot modes returned grounded explanations
+with the fixed unverified disclaimer. No organiser submission was made. An
+authorised hidden-instance rehearsal remains outstanding because no hidden
+eight-CSV package has been provided to this workspace.
+
 #### R4.8 — Typed disruption request parser (R4.8B live Scenario C complete)
 
 **Dependency:** R4.5 recovery integration, stable `ScenarioChange` validation, and the grounded-tool safeguards in R4.6.
