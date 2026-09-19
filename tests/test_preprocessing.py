@@ -53,6 +53,43 @@ def test_live_interchange_expands_but_non_live_work_stays_line_local() -> None:
         non_live.route.line_code
     }
 
+    live_base_lines = {location.split(":")[1] for location in live.base_locations}
+    other_line = ({"ALP", "BET"} - live_base_lines).pop()
+    assert any(
+        location.startswith(f"PLAT:{other_line}:")
+        and location.split(":")[2] not in {"H01", "H02"}
+        for location in live.closure_locations
+    )
+
+
+def test_live_buffer_extension_includes_platforms_beyond_the_booked_route() -> None:
+    prepared = require_prepared(bundle_copy())
+    buffered = next(
+        item
+        for item in prepared.activities
+        if item.project.nature_of_activity is NatureOfWorks.LIVE
+        and item.closure_locations > item.base_locations
+    )
+
+    assert any(
+        location.startswith("PLAT:") and location not in buffered.base_locations
+        for location in buffered.closure_locations
+    )
+
+
+def test_consist_buffer_extension_adds_tunnels_but_not_platforms() -> None:
+    prepared = require_prepared(bundle_copy())
+    buffered = next(
+        item
+        for item in prepared.activities
+        if item.project.nature_of_activity is NatureOfWorks.NON_LIVE_CONSIST
+        and item.closure_locations > item.base_locations
+    )
+
+    added = buffered.closure_locations - buffered.base_locations
+    assert added
+    assert all(location.startswith("SEC:") for location in added)
+
 
 def test_preparation_collects_cross_file_findings_with_source_context() -> None:
     bundle = bundle_copy()

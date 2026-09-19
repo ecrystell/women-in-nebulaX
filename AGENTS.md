@@ -8,21 +8,61 @@ The official source of truth is [`PS1_README.md`](PS1_README.md). Do not replace
 
 ## Current implementation workstream
 
-The active coding task is **Scenario A only**: implement the shared, extensible CP-SAT scheduling model, with Scenario A's strict nominal supply, no-ECLO policy, complete workload, physical/safety/possession/allocation constraints, and priority-weighted planned-completion overrun objective. Scenario B and C policy behaviour must not be implemented yet, but the model must expose a central scenario-policy extension point so they can be added without duplicating the model.
+The active Person 1/2 coding workstream covers the shared CP-SAT model and the implemented Scenario A and Scenario C policies. Scenario A uses strict nominal supply and no ECLO; Scenario C uses the published one-excess-night elasticity, ECLO, and two-week per-line ECLO windows. Scenario B, recovery locks, and disruption re-optimisation remain unimplemented.
 
-The solver must use the existing domain/ingestion/export/preflight contracts, read the planning horizon from `06_PARAMETERS.csv`, generate deterministic three-file Scenario A output, and integrate with the existing backend adapter boundary. The organiser validator is not present as a runnable package in this repository; local preflight results remain unverified until that validator is run.
+The solver must use the existing domain/ingestion/export/preflight contracts, read the planning horizon from `06_PARAMETERS.csv`, generate the deterministic three-file output for the selected scenario, and integrate with the existing backend adapter boundary. The organiser validator is not present as a runnable package in this repository; local preflight results remain unverified until that validator is run.
+
+#### Current verified status — 2026-09-19
+
+- The Claude audit was applicable for the ten same-contract/type co-share contradictions. The validator and CP-SAT models now tie `access_night` for activities that share a submitted possession group; different contracts may still use different numeric local labels.
+- Scenario C closure checks are now location-specific, so a co-share exemption at one common base location cannot mask a buffer conflict at another location. Separate possession groups may still use different hidden physical nights in the same week when the location-specific constraints permit it.
+- Scenario A was regenerated with the correction: `OPTIMAL`, score `32.2`, 192 access rows, 928 occupancy rows, and zero local hard violations. Its organiser-style directional findings remain diagnostic; nominal hidden-night feasibility is the A hard gate.
+- Scenario C was regenerated after both corrections: `FEASIBLE` within the 300-second/8-worker search, score `158.2` (`25.2` weighted overrun + `19` excess access-nights, no ECLO), 192 access rows, 928 occupancy rows, zero local hard violations, and zero directional closure findings. It is an improved incumbent, not a proven optimum.
+- The organiser validator remains unavailable locally. Both canonical outputs are `unverified` until those exact three-file exports are submitted there. Earlier notes below that call Scenario C `26.1` or `OPTIMAL` are historical and superseded.
 
 ### Implementation progress
 
-- Added `backend/app/solver/` with a central Scenario A policy, topology/footprint preprocessing, CP-SAT model, independent score helper, API adapter, and CLI.
-- The shared model allocates complete standard-night workload, enforces planned starts, predecessor finish-to-start ordering, weekly allocation/workfront caps, legal PM/PC/C possession groups, strict nominal supply, and Scenario A's no-ECLO policy.
+#### 2026-09-19 organiser Scenario C closure correction completed
+
+- The organiser validator rejected the former Scenario C output with 62 `[Activity inside another group's closure zone]` errors. This is authoritative evidence that the prior local interpretation was wrong: different submitted possession groups cannot rely on an unexported hidden-night ordering to coexist inside one another's closure footprint in the same submitted week.
+- Local preflight now promotes these directional overlaps to hard `closure` violations. With the corrected shared footprint it reproduces all 62 rejected subject/week combinations. The organiser expands the displayed peer IDs through a possession group, while local evidence deliberately lists the direct closure owners; this can change message wording without changing the rejection decision.
+- Scenario A and C CP-SAT now enforce the same hard rule: when either activity's base footprint intersects the other's closure footprint in a week, the pair must form one legal C/C or PC/C co-share possession at a common base location or use different weeks. Separate groups are not excused by hidden physical-night colours.
+- The shared footprint now includes every platform and tunnel reached by a Live buffer, retains tunnel-only extension for Non-live (Consist), mirrors Live to the opposite bound, and fully buffers the Live H01-H02 cross-line effect. This footprint plus the hard group rule exactly matches the organiser report's 62 rejected subject/week combinations.
+- A former cold/warm run reported `OPTIMAL` at `26.1` before the independent CSV audit below. That result is historical and has been superseded; it is not the current Scenario C submission.
+- The former `25.2` result is rejected and must never be described as an optimum. Scenario A was also regenerated under the shared rule and again proved `OPTIMAL` at `32.2` (objective/bound `322/322`), with zero strengthened local hard violations.
+
+#### 2026-09-19 independent Scenario C CSV audit found a second validator gap
+
+- The current `sample_submission/scenario_c/` output passes our preflight but is not organiser-ready. An independent audit reproduced 10 exact same-contract/type contradictions where two activities share a submitted possession group at a location/week but export different `access_night` values. PS1 defines the shared group as one possession/one access-night slot, so the local validator and CP-SAT model must tie those local night indices together for same-contract/type co-sharing.
+- The current validator's pair-wide co-share exemption is too broad for closure checking: it skips a pair after finding any same-group common base location, even when the pair has additional base-vs-buffer overlap at another location. Independent recomputation using the repository footprint found 77 conflicting activity-week pairs and 94 directional location incidences. The reported count of 108 is not independently confirmed because the updated audit scripts were not present in the workspace, but the zero local findings are demonstrably false.
+- This audit led to the current correction: location-specific closure exemptions and same-contract/type `access_night` consistency are now enforced, and regenerated Scenario C is locally clean at `158.2` but remains unverified and not proven optimal.
+
+#### 2026-09-19 solver audit completed
+
+- Re-read this execution plan together with `PS1_README.md`; the published hard constraints and exact A/C objectives remain the authority for all solver changes.
+- Historical audit baseline: the retained outputs initially validated at A `32.2` and C `694.1`; a fresh 60-second A run returned `888.3`, while a fresh 120-second C run returned `UNKNOWN`. This exposed incumbent-reproducibility and search issues even though the old CSVs were locally clean.
+- Confirmed the shared buffer-footprint correction is active in `domain/preprocessing.py`: Non-live (Consist) extends through buffer tunnel sectors while retaining booked platforms; Live extends through both platforms and tunnels, mirrors to the opposite bound, and applies the buffered H01-H02 cross-line effect.
+- Historical interpretation, now superseded by organiser evidence: the local validator previously treated organiser-style buffer/closure overlaps as diagnostics and relied on hidden-night colourability. The 62-error organiser report proves those overlaps are hard failures even though the supplied reference sample also fails the strengthened local check.
+- CP-SAT remains the sole scheduling authority. A/C now reconstruct omitted hidden state from a validated incumbent, feed a complete solution hint to the unrestricted model, report the objective bound/gap, and retain the better `(score, access-row-count)` output. A cold Scenario A start first asks CP-SAT for hard feasibility and then optimises from that complete hint.
+- Scenario A's hidden-night graph had one additional defect: it treated equal co-share labels at any common base location as a pair-wide exemption. It now matches local preflight's location-specific rule, so a different group at any common base location creates the required physical-night conflict.
+- Scenario A was regenerated under the organiser-aligned closure constraint and proved `OPTIMAL` at `32.2` with objective/bound `322/322`, 192 access rows, 928 occupancy rows, and zero strengthened local hard violations.
+- Found and fixed a Scenario C objective mismatch: the model priced any visible group whose *internal index* exceeded nominal capacity, while the published score counts the *number of visible possession groups* above capacity. Buffer-only closure groups could consume lower indices and create false model penalties. C now counts visible base groups directly, and extracted/local score equals the scaled CP-SAT objective.
+- Replaced Scenario C's large one-hot physical-night/group-slot submodel with compact integer hidden-night colours for the same common-base ordering boundary. Added two-stage incumbent reconstruction: CP-SAT first reconstructs omitted hidden state with validated visible decisions fixed, then supplies a complete hint to the unrestricted official-objective solve.
+- Scenario C workload is bounded to minimum 1.0/1.5-yield delivery, preventing gratuitous accesses. The former `25.2` and `26.1` results were over superseded feasible regions; the current corrected model returns a locally clean `158.2` incumbent within the production time limit, without an optimality proof.
+- Restored the CLI module entry point: `python -m app.solver.cli ...` now executes instead of silently importing and exiting.
+
+- Added `backend/app/solver/` with central Scenario A/C policies, topology/footprint preprocessing, CP-SAT models, independent score helpers, API adapter, and CLI.
+- The shared model allocates complete workload, enforces planned starts, predecessor finish-to-start ordering, weekly allocation/workfront caps, legal PM/PC/C possession groups, route occupancy, buffers, Live mirroring, H01–H02 effects, and scenario-specific capacity/ECLO rules.
 - Internal closure slots cover buffer, Live opposite-bound, and Live H01–H02 cross-line footprints while retaining the published output distinction between base occupancy rows and hidden closure state.
-- Latest generated public run completed with `OPTIMAL` CP-SAT status, 54 activities, 192 access rows, 928 occupancy rows, 14 contract results, weighted score `32.2`, and zero local preflight hard violations. This is not organiser-validator success.
-- Generated outputs are written to `sample_submission/scenario_a/`; organiser reference fixtures remain under `data/public-instance/sample-submission/`.
+- Scenario A public run completed with `OPTIMAL` CP-SAT status, 54 activities, 192 access rows, 928 occupancy rows, 14 contract results, weighted score `32.2`, and zero local preflight hard violations. This is not organiser-validator success.
+- Scenario C uses compact internal physical-night variables, location-specific organiser-style closure checks, legal possession mixes, one soft excess possession per location-week, ECLO continuity windows, bounded workload, and the exact published score. The current output is locally clean at `158.2`, with 192 access rows, 928 occupancy rows, and zero local preflight hard violations; it is not proven optimal.
+- The best Scenario C output is in `sample_submission/scenario_c/`; Scenario A output is in `sample_submission/scenario_a/`; organiser reference fixtures remain under `data/public-instance/sample-submission/`.
 - The production FastAPI app now uses the solver adapter; the existing generic `RunService()` default remains injectable for tests and non-solver callers.
-- Solver, ingestion, export, preflight, and API tests pass in the disposable environment. The full suite has one unrelated public-fixture checksum failure because the current files under `data/public-instance/` do not match their checked-in `manifest.json` hashes; no fixture files were changed.
-- Cross-group buffer ordering remains a documented authority limitation because the published output has no global night identifier. The solver uses internal closure slots and local preflight still reports the schedule as unverified until the organiser validator runs.
-- Scenario B/C, ECLO selection, recovery locks, and LLM behaviour remain intentionally unimplemented for this workstream.
+- The local validator now reconstructs hidden weekly physical-night feasibility using the nominal supply; `access_night` remains contract/type-local and is never treated as a global identifier.
+- The local validator exposes organiser-style directional closure evidence under `detail.organiser_closure_findings`; Scenario C treats location-specific findings as hard, while Scenario A retains them as diagnostics and uses nominal hidden-night feasibility as its hard gate. Same-contract/type co-share-night contradictions are hard in both scenarios.
+- The organiser/reference validator is still unavailable as a runnable package, so every local result remains `unverified`. The supplied reference fixture intentionally has closure and co-share-night findings; the current canonical A and C outputs have zero local hard findings, and C has zero directional findings.
+- The full test suite passes after the organiser correction: 46 tests collected and passed across API, exports, ingestion, preflight, preprocessing, solver, and v1 API coverage. The public-fixture checksum test now normalizes Windows CRLF before comparing with the upstream LF manifest; no fixture input was changed. FastAPI and `python-multipart` are installed in the active Python 3.10 audit environment, while the project target remains Python 3.12. The only test output is the existing Starlette warning that `httpx` test-client compatibility is deprecated in favour of `httpx2`.
+- Scenario B, recovery locks, disruption re-optimisation, and LLM behaviour remain intentionally unimplemented for this workstream.
 
 ## Official contract
 
@@ -160,7 +200,7 @@ CP-SAT is the only component allowed to choose the final schedule. The custom do
 
 - Implement every hard rule and the exact Scenario A objective.
 - Add Scenario B's zero-overrun restriction, excess-capacity scoring, and ECLO cost.
-- Add Scenario C's one-excess-night allowance and two-week per-line ECLO window.
+- Scenario C's one-excess-night allowance, ECLO objective, two-week per-line ECLO window, hidden physical-night variables, and local validation gate are implemented for the public instance.
 - Add recovery with locked work and minimal churn.
 - Add fixtures and regression tests for every rule and all three scenarios.
 
@@ -204,6 +244,21 @@ The division is by decision ownership. Persons 1 and 2 together own the entire s
 | Recovery | Locked work, disruption re-plan, minimal-churn objective, `ScheduleDiff` | Definition of preserved work and change budget |
 
 Persons 1 and 2 jointly sign off on solver feasibility, objective calculations, performance, and public-instance A/B/C results.
+
+### Person 1/2 completed implementation record
+
+The following records the work completed jointly by Persons 1 and 2.
+
+- Domain and safety state: the eight-CSV ingestion and shared preprocessing now validate IDs, dates, topology, bounds, capacities, predecessor references, and the planning horizon; expand each working section into required tunnel/platform locations; and derive buffer, Live opposite-bound, and Live H01–H02 cross-line footprints.
+- Scenario A CP-SAT model: schedules the complete workload with standard accesses, planned starts, predecessor finish-to-start ordering, legal PM/PC/C possession mixes, nominal location supply, contract/type weekly access caps, workfront limits, no ECLO, and the exact priority-weighted planned-completion objective.
+- Scenario C CP-SAT model: schedules complete workload with standard/ECLO choices, one additional possession group per location-week, legal mixes, weekly allocation/workfront limits, line-specific two-week ECLO windows, hidden physical-night slots, and the exact `priority_weighted_overrun + 7 × excess_access_nights + 5 × eclo_nights` objective.
+- Hidden timing representation: both A and C use internal physical-night variables shared across an activity's footprint. These variables are used only by CP-SAT and are not exported as `access_night`; the official `access_night` remains the local contract/type accounting index.
+- Schedule/export integration: both solvers convert CP-SAT assignments into the canonical schedule and exactly three CSVs: `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`. A time-limited `UNKNOWN` result is rejected and no partial schedule is exported.
+- Validator alignment: the local preflight hard-rejects location-specific organiser-style directional closure findings for Scenario C, retains them as diagnostics for Scenario A, and separately checks hidden physical-night colourability. It never marks a schedule organiser-verified.
+- Public validation evidence: current Scenario C is locally clean at score `158.2`, with 192 access rows, 928 occupancy rows, zero local hard violations, and no directional findings, but is not proven optimal. Scenario A is locally `OPTIMAL` at `32.2`, with 192 access rows, 928 occupancy rows, and zero hard violations. The former `25.2`/`26.1` C outputs are superseded.
+- Submission cleanup: removed the 12 generated diagnostic/benchmark/redo result folders; retained only `sample_submission/scenario_a/`, `sample_submission/scenario_a_incorrect/`, and `sample_submission/scenario_c/`. No production solver code was removed because every remaining solver module is referenced by the CLI, adapter, or tests.
+- Search history: the former Scenario C one-hot model was highly seed-sensitive (`5698.5`, `854.1`, `19620.8`, then `694.1`). The compact model first proved `25.2` only over a superseded feasible region; the current corrected search returns `158.2` within the production limit but does not prove optimality.
+- Remaining authority boundary: the organiser validator package is not installed, so local reports remain `unverified`. The recorded 62-error website result is sufficient to make that specific closure pattern a local hard failure, but the corrected files still require website resubmission.
 
 ### Person 3 — frontend, UI/UX, and controller experience owner
 
@@ -297,19 +352,19 @@ This is the delivery checklist for the custom-validator, integration, and ground
 | Export integration | Complete for locally clean candidates | Only a zero-hard-violation local candidate produces the exact three CSV filenames and official column order through the existing exporter. The files are retained only in a temporary run directory; a clean result is still `unverified`. |
 | Local custom preflight | Partially complete | `python -m app.validation.preflight` loads the eight inputs and three outputs and checks schema, workload, start dates, precedence, route occupancy, legal mixes, allocation, workfronts, A/B/C capacity/ECLO policies, result consistency, and score diagnostics. It always reports `unverified`. |
 | R4.2A local validator evidence and fixture coverage | Complete | Local findings now carry activity/location/week context plus optional co-share group, derived footprint, and input values. Regression fixtures cover locally observable footprints, mix, capacity, allocation, workfront, scenario policy, cross-line Live ECLO evidence, and published local score components. No finding uses an invented organiser tag. |
-| Closure derivation | Partially complete | Buffer, Live opposite-bound, and H01/H02 cross-line footprints are derived. Cross-group closure ordering cannot yet be proven from the published three-output CSVs because there is no global possession-time ordering; do not invent one. |
+| Closure derivation | Implemented from recorded organiser evidence | Buffer, Live opposite-bound, H01/H02 cross-line footprints, and same-week other-group closure rejection are derived. The local report reproduces every subject/week in the 62-error Scenario C website report. |
 | API/UI development support | Complete foundation | Typed TypeScript client, versioned mock schedule/report/diff payloads, health evidence, and loading/blocked/failed/unverified states exist for Person 3. |
 | Recovery orchestration | Complete shell | A recovery request requires an explicit confirmation timestamp, a matching base schedule/scenario, and passes supply overrides plus locked placement keys to the solver adapter. |
-| Regression and container checks | Complete for Scenario A gate | Pytest covers upload failures, lifecycle states, real Scenario A solving, B/C unavailability, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
+| Regression and container checks | Complete for Scenario A/C gate | Pytest covers upload failures, lifecycle states, real Scenario A solving, Scenario B unavailability, Scenario C adapter support, solver-preprocessing failures, preflight gating, exports, recovery handoff, validator truthfulness, and local rule fixtures. Docker builds, API health, and the preflight command run against the vendored public sample. |
 | Documentation | Complete foundation | The README documents the local preflight command. `docs/rule-matrix.md` records which local rules are implemented, partial, or organiser-dependent. |
 
 ### Remaining implementation roadmap
 
 #### R4.2B — Organiser evidence and closure-order completion
 
-**Dependency:** the shared preprocessing handoff and organiser clarification/reference-validator observations.
+**Dependency:** further organiser clarification/reference-validator observations beyond the recorded Scenario C rejection.
 
-- Replace the current closure-order warning with deterministic checks once the legal global possession-time representation is agreed or observed from the organiser validator.
+- Keep the implemented hard same-week group-closure check synchronized with new organiser submissions; refine only the displayed peer-group expansion if needed.
 - Confirm exact organiser rule tags, report fields, completion-date semantics, and score calculations using recorded website submissions.
 - Keep R4.2A's local evidence fixtures as regression coverage; do not upgrade their local rule names into organiser tags.
 - Add only the remaining organiser-dependent fixtures: globally ordered buffer/Live/H01-H02 collision examples, official report shapes/tags, and score examples confirmed by recorded organiser submissions.

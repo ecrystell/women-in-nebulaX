@@ -205,22 +205,72 @@ class NetworkTopology:
 
     def closure_locations(self, route: Route, project: ProjectRecord) -> frozenset[str]:
         extension = self.buffer_size[project.nature_of_activity]
-        locations = self._locations_for_range(
-            route.line_code, route.bound, route.first_sector_seq - extension, route.last_sector_seq + extension
+        base = set(self.base_locations(route))
+        extended = self._locations_for_range(
+            route.line_code,
+            route.bound,
+            route.first_sector_seq - extension,
+            route.last_sector_seq + extension,
         )
+        if project.nature_of_activity is NatureOfWorks.LIVE:
+            # Live power-isolation closes every tunnel and platform reached
+            # by the configured buffer-sector range.
+            locations = set(extended)
+        else:
+            # The organiser evidence only extends Consist through tunnel
+            # sectors. Booked platforms remain in the base closure.
+            locations = base
+            locations.update(
+                location for location in extended if location.startswith("SEC:")
+            )
         if self.opposite_bound_required[project.nature_of_activity]:
             opposite = Bound.WESTBOUND if route.bound is Bound.EASTBOUND else Bound.EASTBOUND
-            locations |= self._locations_for_range(
-                route.line_code, opposite, route.first_sector_seq - extension, route.last_sector_seq + extension
+            opposite_extended = self._locations_for_range(
+                route.line_code,
+                opposite,
+                route.first_sector_seq - extension,
+                route.last_sector_seq + extension,
             )
+            if project.nature_of_activity is NatureOfWorks.LIVE:
+                locations.update(opposite_extended)
+            else:
+                opposite_base = self._locations_for_range(
+                    route.line_code,
+                    opposite,
+                    route.first_sector_seq,
+                    route.last_sector_seq,
+                )
+                locations.update(opposite_base)
+                locations.update(
+                    location
+                    for location in opposite_extended
+                    if location.startswith("SEC:")
+                )
         if project.nature_of_activity is NatureOfWorks.LIVE:
-            for location in tuple(locations):
-                kind, line, part, bound = location.split(":")
-                if part in {"H01", "H02", "H01_H02"}:
-                    other_line = {"ALP": "BET", "BET": "ALP"}.get(line)
-                    other = f"{kind}:{other_line}:{part}:{bound}" if other_line else None
-                    if other and other in self.supply_ids:
-                        locations.add(other)
+            affects_interchange = any(
+                location.split(":")[2] == "H01_H02" for location in locations
+            )
+            if affects_interchange:
+                other_line = {"ALP": "BET", "BET": "ALP"}.get(route.line_code)
+                other_hub_sector = next(
+                    (
+                        sector
+                        for (line, _sequence), sector in self.sectors_by_line_seq.items()
+                        if line == other_line and sector.sector_id.rsplit(":", 1)[1] == "H01_H02"
+                    ),
+                    None,
+                )
+                if other_line and other_hub_sector:
+                    affected_bounds = (Bound.EASTBOUND, Bound.WESTBOUND)
+                    for bound in affected_bounds:
+                        locations.update(
+                            self._locations_for_range(
+                                other_line,
+                                bound,
+                                other_hub_sector.seq - extension,
+                                other_hub_sector.seq + extension,
+                            )
+                        )
         return frozenset(locations)
 
 

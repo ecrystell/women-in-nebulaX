@@ -15,4 +15,8 @@ def test_public_fixture_checksums_match_manifest() -> None:
     for relative_path, expected_hash in manifest["files"].items():
         fixture = PUBLIC_DATA / relative_path
         assert fixture.is_file(), f"missing public fixture: {relative_path}"
-        assert hashlib.sha256(fixture.read_bytes()).hexdigest() == expected_hash
+        # The manifest records the upstream LF bytes. Git may materialise the
+        # CSV fixtures with CRLF on Windows, which must not look like a content
+        # change to this source-integrity check.
+        normalized = fixture.read_bytes().replace(b"\r\n", b"\n")
+        assert hashlib.sha256(normalized).hexdigest() == expected_hash

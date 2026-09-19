@@ -153,21 +153,36 @@ docker compose run --rm app python -m app.validation.preflight `
   --submission path/to/submission
 ```
 
-Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. It expands buffer/Live/interchange footprints, but cannot prove the ordering of distinct possession groups from the published output schema; use the organiser website for that final closure decision and every feasibility claim.
+Exit code `0` means the implemented local checks found no hard violation; `1` prints the violations and preserves the schedule as **unverified**. The check validates CSV contracts, workload, dates, precedence, topology, possession mixes, same-week possession-group closure zones, hidden weekly physical-night feasibility, weekly allocation, workfronts, capacity, ECLO policies, results, and score components. Scenario C treats location-specific organiser-style directional closure findings as hard; Scenario A retains those findings as diagnostics and uses nominal hidden-night feasibility as its hard gate. Same-contract/type co-share-night contradictions are hard in both. The published `access_night` remains contract/type-local and is not treated as a network-wide identifier. A locally clean result remains unverified until the organiser validator confirms the exact exported files.
 
-### Scenario A solver (implemented)
+### Scenario A/C solver (implemented)
 
-Run the deterministic CP-SAT Scenario A solver directly without starting the frontend:
+Run the CP-SAT solver directly without starting the frontend. Scenario A keeps
+its existing strict-supply/no-ECLO policy; Scenario C adds the published
+one-excess-possession allowance, ECLO, and two-week per-line ECLO windows.
+
+Scenario A:
 
 ```powershell
 $env:PYTHONPATH = "backend"
-python -m backend.app.solver `
+python -m app.solver `
   --scenario A `
   --input-dir data/public-instance `
   --output-dir sample_submission/scenario_a
 ```
 
-The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. A clean local preflight remains **unverified** until the organiser/reference validator is run. Scenario B and C are extension points only and are not implemented yet.
+Scenario C:
+
+```powershell
+python -m app.solver `
+  --scenario C `
+  --input-dir data/public-instance `
+  --output-dir sample_submission/scenario_c `
+  --time-limit 300 `
+  --workers 8
+```
+
+The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. If the output folder already contains a locally valid schedule, rerunning the same command reconstructs its hidden CP-SAT state and uses it as a complete warm start. The current corrected Scenario C public incumbent scores `158.2` in the 300-second/8-worker run; it is locally clean but not proven optimal. A clean local preflight remains **unverified** until the organiser/reference validator is run. Scenario B remains an extension point and is not implemented yet.
 
 ## Required exports
 

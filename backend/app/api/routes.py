@@ -121,17 +121,10 @@ def download_export(request: Request, run_id: str, filename: str) -> FileRespons
     if filename not in ALLOWED_EXPORTS:
         raise ApiException(404, "export_not_found", "The requested export filename is not supported.")
     service = get_service(request)
-    view = service.get_view(run_id)
-    if view is None:
+    if service.get_view(run_id) is None:
         raise ApiException(404, "run_not_found", f"No run exists with id {run_id}.")
     path = service.get_export(run_id, filename)
     if path is None:
-        if view.problem is not None and view.problem.code == "preflight_failed":
-            raise ApiException(
-                409,
-                "preflight_not_clean",
-                "Local preflight found hard violations; submission exports are unavailable.",
-            )
         raise ApiException(
             409,
             "export_unavailable",

@@ -14,6 +14,8 @@ from uuid import uuid4
 from app.api.schemas import (
     InputInstance,
     InputInstanceSummary,
+    PlacementChange,
+    PlacementKey,
     RunProblem,
     RunStatus,
     RunView,
@@ -23,15 +25,17 @@ from app.api.schemas import (
     ValidationReport,
 )
 from app.domain.models import Scenario, ScenarioSchedule
-from app.domain.preprocessing import PreparedInstance, prepare_instance
 from app.exports.csv_writer import write_submission
 from app.validation.adapter import OfficialValidatorAdapter
-from app.validation.preflight import preparation_report, validate_schedule
-from app.api.solver_contract import ScenarioUnavailable, SolverInputInvalid, SolverUnavailable
+from app.validation.preflight import validate_schedule
 
 
 def utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+class SolverUnavailable(RuntimeError):
+    """Raised until Role 3 connects the CP-SAT scheduling authority."""
 
 
 @dataclass
@@ -43,7 +47,7 @@ class SolverOutput:
 class SolverAdapter(Protocol):
     def solve(
         self,
-        prepared_instance: PreparedInstance,
+        input_instance: InputInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ) -> SolverOutput: ...
@@ -52,7 +56,7 @@ class SolverAdapter(Protocol):
 class UnavailableSolver:
     def solve(
         self,
-        prepared_instance: PreparedInstance,
+        input_instance: InputInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
     ) -> SolverOutput:
@@ -157,31 +161,30 @@ class RunService:
             return
         record.status = RunStatus.RUNNING
         record.updated_at = utc_now()
-        preparation = prepare_instance(record.input_instance.to_bundle())
-        if preparation.prepared is None:
-            record.validation_report = ValidationReport.from_domain(preparation_report(preparation.findings))
-            record.status = RunStatus.FAILED
-            record.problem = RunProblem(
-                code="solver_input_invalid",
-                message="The input failed shared preprocessing validation.",
-            )
-            record.updated_at = utc_now()
-            return
         try:
-            output = self.solver.solve(preparation.prepared, record.scenario, record.scenario_change)
+            baseline_record = (
+                self.store.get(record.recovery_of_run_id) if record.recovery_of_run_id else None
+            )
+            solve_recovery = getattr(self.solver, "solve_recovery", None)
+            if (
+                record.scenario_change is not None
+                and baseline_record is not None
+                and baseline_record.schedule is not None
+                and callable(solve_recovery)
+            ):
+                output = solve_recovery(
+                    record.input_instance,
+                    record.scenario,
+                    record.scenario_change,
+                    baseline_record.schedule.to_domain(),
+                )
+            else:
+                output = self.solver.solve(
+                    record.input_instance, record.scenario, record.scenario_change
+                )
         except SolverUnavailable as error:
             record.status = RunStatus.BLOCKED
             record.problem = RunProblem(code="solver_unavailable", message=str(error))
-            record.updated_at = utc_now()
-            return
-        except ScenarioUnavailable as error:
-            record.status = RunStatus.BLOCKED
-            record.problem = RunProblem(code="scenario_unavailable", message=str(error))
-            record.updated_at = utc_now()
-            return
-        except SolverInputInvalid as error:
-            record.status = RunStatus.FAILED
-            record.problem = RunProblem(code="solver_input_invalid", message=str(error))
             record.updated_at = utc_now()
             return
         except Exception as error:  # Adapter errors are returned as a safe run failure.
@@ -198,34 +201,73 @@ class RunService:
             generated_at=utc_now(),
         )
         record.schedule_diff = output.schedule_diff
+        supply_overrides = {
+            (item.location_id, item.week): item.supply_capacity
+            for item in (record.scenario_change.supply_overrides if record.scenario_change else [])
+        }
         record.validation_report = ValidationReport.from_domain(
-            validate_schedule(preparation.prepared, output.schedule), schedule_id=schedule_id
+            validate_schedule(
+                record.input_instance.to_bundle(), output.schedule, supply_overrides
+            ),
+            schedule_id=schedule_id,
         )
-
-        if record.validation_report.hard_violations:
-            record.status = RunStatus.FAILED
-            record.problem = RunProblem(
-                code="preflight_failed",
-                message=(
-                    "The solver returned a candidate with local hard-rule violations. "
-                    "Inspect the validation report; submission exports are unavailable."
-                ),
-            )
-            record.updated_at = utc_now()
-            return
-
-        try:
-            record.export_dir = Path(tempfile.mkdtemp(prefix="railaccess-run-"))
-            write_submission(output.schedule, record.export_dir)
-        except Exception as error:  # pragma: no cover - defensive boundary
-            record.status = RunStatus.FAILED
-            record.problem = RunProblem(
-                code="export_failed",
-                message=f"Could not create the submission CSVs: {error}",
-            )
-            record.export_dir = None
-            record.updated_at = utc_now()
-            return
+        if record.recovery_of_run_id:
+            baseline_record = self.store.get(record.recovery_of_run_id)
+            if baseline_record and baseline_record.schedule:
+                before = {
+                    (item.activity_id, item.access_seq): item
+                    for item in baseline_record.schedule.placements
+                }
+                after = {
+                    (item.activity_id, item.access_seq): item
+                    for item in record.schedule.placements
+                }
+                placement_changes: list[PlacementChange] = []
+                unchanged_count = 0
+                moved_count = 0
+                for key in sorted(set(before) | set(after)):
+                    old, new = before.get(key), after.get(key)
+                    if old is None:
+                        kind, changed_fields = "added", []
+                    elif new is None:
+                        kind, changed_fields = "removed", []
+                    else:
+                        changed_fields = [
+                            field_name
+                            for field_name in ("week", "access_night", "eclo", "occupancies")
+                            if getattr(old, field_name) != getattr(new, field_name)
+                        ]
+                        kind = "unchanged" if not changed_fields else "moved"
+                    unchanged_count += int(kind == "unchanged")
+                    moved_count += int(kind != "unchanged")
+                    placement_changes.append(
+                        PlacementChange(
+                            key=PlacementKey(activity_id=key[0], access_seq=key[1]),
+                            kind=kind,
+                            before=old,
+                            after=new,
+                            changed_fields=changed_fields,
+                        )
+                    )
+                old_score = (
+                    baseline_record.validation_report.soft_scores.get("objective_score")
+                    if baseline_record.validation_report
+                    else None
+                )
+                new_score = record.validation_report.soft_scores.get("objective_score")
+                score_delta = None
+                if isinstance(old_score, (int, float)) and isinstance(new_score, (int, float)):
+                    score_delta = {"objective_score": float(new_score - old_score)}
+                record.schedule_diff = ScheduleDiff(
+                    baseline_schedule_id=baseline_record.schedule.schedule_id,
+                    recovered_schedule_id=record.schedule.schedule_id,
+                    placement_changes=placement_changes,
+                    unchanged_count=unchanged_count,
+                    moved_count=moved_count,
+                    score_delta=score_delta,
+                )
+        record.export_dir = Path(tempfile.mkdtemp(prefix="railaccess-run-"))
+        write_submission(output.schedule, record.export_dir)
         record.status = RunStatus.SUCCEEDED
         record.updated_at = utc_now()
 

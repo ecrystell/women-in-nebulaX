@@ -1,510 +1,475 @@
-"""Shared CP-SAT model with the Scenario A policy enabled."""
+"""OR-Tools CP-SAT model for the published PS1 railway access problem.
+
+The model assigns access weeks, contract-local access nights, ECLO flags and a
+legal possession slot at every occupied location.  It deliberately emits only
+solutions produced by CP-SAT; the local validator remains an independent
+post-solve gate.
+"""
 
 from __future__ import annotations
 
-import time
+import argparse
+import os
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Any
+from datetime import timedelta
+from pathlib import Path
+from types import SimpleNamespace
 
-try:  # Keep ingestion/API imports usable when optional solver dependencies are absent.
-    from ortools.sat.python import cp_model
-except ImportError:  # pragma: no cover - exercised only in dependency-free environments.
-    cp_model = None  # type: ignore[assignment]
+from ortools.sat.python import cp_model
 
-from ..domain.models import (
+from app.api.schemas import InputInstance, ScenarioChange
+from app.domain.models import (
     AccessAssignment,
+    AccessType,
     ContractResult,
     InstanceBundle,
     OccupancyAssignment,
     Scenario,
     ScenarioSchedule,
 )
-from ..domain.preprocessing import PreparedActivity, PreparedInstance, require_prepared
-from .policy import ScenarioPolicy, policy_for
-from .scoring import scenario_a_score
+from app.exports.csv_writer import write_submission
+from app.validation.preflight import _Preflight, validate_schedule
 
 
-class SolverDependencyError(RuntimeError):
-    """OR-Tools is not installed in the active Python environment."""
-
-
-class SolverError(RuntimeError):
-    """The model could not produce a valid CP-SAT candidate."""
+class SolveError(RuntimeError):
+    """The instance is invalid or CP-SAT did not produce a complete schedule."""
 
 
 @dataclass(frozen=True)
-class SolveDiagnostics:
-    status: str
-    objective_value_scaled: float
-    weighted_score: float
-    solve_seconds: float
-    activity_count: int
-    scheduled_access_rows: int
-    occupancy_rows: int
-    contract_count: int
+class SolverConfig:
+    max_time_seconds: float = 120.0
+    workers: int = max(1, min(8, os.cpu_count() or 1))
+    random_seed: int = 2026
+    log_search_progress: bool = False
 
 
 @dataclass(frozen=True)
-class SolveResult:
-    schedule: ScenarioSchedule
-    diagnostics: SolveDiagnostics
+class _ActivityFacts:
+    locations: frozenset[str]
+    closure: frozenset[str]
+    line_codes: frozenset[str]
+    planned_week: int
 
 
-@dataclass
-class _ModelArtifacts:
-    model: Any
-    prepared: PreparedInstance
-    policy: ScenarioPolicy
-    assignments: dict[tuple[str, int, int], Any]
-    activity_week: dict[tuple[str, int], Any]
-    group_assignments: dict[tuple[str, str, int, int], Any]
-    first_week: dict[str, Any]
-    last_week: dict[str, Any]
-    overrun_days: dict[str, Any]
+class CpSatRailSolver:
+    """Build and solve one exact, scenario-specific CP-SAT model."""
 
-
-def _sum(values: list[Any]) -> Any:
-    """Return a CP-SAT-compatible sum, including for an empty list."""
-
-    return sum(values, 0)
-
-
-class ScenarioASolver:
-    """Solve one input bundle under the strict-supply Scenario A policy."""
-
-    def __init__(
-        self,
-        *,
-        time_limit_seconds: float = 60.0,
-        random_seed: int = 0,
-        num_search_workers: int = 1,
-    ) -> None:
-        self.time_limit_seconds = time_limit_seconds
-        self.random_seed = random_seed
-        self.num_search_workers = num_search_workers
-        self.last_result: SolveResult | None = None
+    def __init__(self, config: SolverConfig | None = None) -> None:
+        self.config = config or SolverConfig()
+        self.last_status: str | None = None
+        self.last_wall_time_seconds: float | None = None
 
     def solve(
         self,
+        input_instance: InputInstance,
+        scenario: Scenario,
+        scenario_change: ScenarioChange | None = None,
+    ) -> SimpleNamespace:
+        # SimpleNamespace is intentionally structural: RunService's adapter
+        # contract requires ``schedule`` and optional ``schedule_diff`` only.
+        schedule = self.solve_bundle(input_instance.to_bundle(), scenario, scenario_change)
+        return SimpleNamespace(schedule=schedule, schedule_diff=None)
+
+    def solve_recovery(
+        self,
+        input_instance: InputInstance,
+        scenario: Scenario,
+        scenario_change: ScenarioChange,
+        baseline: ScenarioSchedule,
+    ) -> SimpleNamespace:
+        schedule = self.solve_bundle(
+            input_instance.to_bundle(), scenario, scenario_change, baseline=baseline
+        )
+        return SimpleNamespace(schedule=schedule, schedule_diff=None)
+
+    def solve_bundle(
+        self,
         instance: InstanceBundle,
-        scenario: Scenario = Scenario.A,
-        scenario_change: object | None = None,
+        scenario: Scenario,
+        scenario_change: ScenarioChange | None = None,
+        *,
+        baseline: ScenarioSchedule | None = None,
     ) -> ScenarioSchedule:
-        return self.solve_with_diagnostics(instance, scenario, scenario_change).schedule
-
-    def solve_with_diagnostics(
-        self,
-        instance: InstanceBundle,
-        scenario: Scenario = Scenario.A,
-        scenario_change: object | None = None,
-    ) -> SolveResult:
-        if scenario is not Scenario.A:
-            policy_for(scenario)  # raises the central unsupported-scenario error
-        if scenario_change is not None:
-            raise SolverError(
-                "Disruption recovery is not implemented in the Scenario A core solver yet."
-            )
-        return self.solve_prepared_with_diagnostics(
-            require_prepared(instance), scenario, scenario_change
+        scenario = Scenario(scenario)
+        empty = ScenarioSchedule(
+            scenario=scenario,
+            access_assignments=[],
+            occupancy_assignments=[],
+            contract_results=[],
         )
+        rules = _Preflight(instance, empty)
+        rules.validate_input_references()
+        if rules.violations:
+            raise SolveError("invalid input: " + "; ".join(str(v["detail"]) for v in rules.violations[:5]))
+        if rules.horizon_start is None or rules.horizon_weeks is None:
+            raise SolveError("horizon_start and horizon_weeks are required")
 
-    def solve_prepared_with_diagnostics(
-        self,
-        prepared: PreparedInstance,
-        scenario: Scenario = Scenario.A,
-        scenario_change: object | None = None,
-    ) -> SolveResult:
-        """Solve an already validated/prepared instance without recalculation."""
-        if scenario is not Scenario.A:
-            policy_for(scenario)
-        if scenario_change is not None:
-            raise SolverError(
-                "Disruption recovery is not implemented in the Scenario A core solver yet."
-            )
-        if cp_model is None:
-            raise SolverDependencyError(
-                "OR-Tools is required for the CP-SAT solver; install requirements.txt first."
-            )
+        activities = {item.activity_id: item for item in instance.activities}
+        projects = {item.contract_number: item for item in instance.projects}
+        horizon = rules.horizon_weeks
+        weeks = range(1, horizon + 1)
+        facts: dict[str, _ActivityFacts] = {}
+        eligible_by_location: dict[str, list[str]] = defaultdict(list)
+        for activity in instance.activities:
+            locations = frozenset(rules.base_locations(activity))
+            if not locations:
+                raise SolveError(f"{activity.activity_id} has no valid occupancy footprint")
+            closure = frozenset(rules.closure_locations(activity))
+            planned_week = rules.planned_week(activity.planned_start_date)
+            if planned_week is None or planned_week > horizon:
+                raise SolveError(f"{activity.activity_id} starts outside the planning horizon")
+            lines = frozenset(location.split(":")[1] for location in closure)
+            facts[activity.activity_id] = _ActivityFacts(locations, closure, lines, max(1, planned_week))
+            for location in locations:
+                eligible_by_location[location].append(activity.activity_id)
 
-        policy = policy_for(scenario)
-        artifacts = self._build_model(prepared, policy)
-        solver = cp_model.CpSolver()
-        solver.parameters.max_time_in_seconds = self.time_limit_seconds
-        solver.parameters.random_seed = self.random_seed
-        solver.parameters.num_search_workers = self.num_search_workers
-        solver.parameters.log_search_progress = False
+        supply = {item.location_id: item.supply_capacity for item in instance.location_supply}
+        overrides = {
+            (item.location_id, item.week): item.supply_capacity
+            for item in (scenario_change.supply_overrides if scenario_change else [])
+        }
+        for location, week in overrides:
+            if location not in supply or not 1 <= week <= horizon:
+                raise SolveError(f"invalid supply override for {location}, week {week}")
 
-        started = time.perf_counter()
-        status = solver.Solve(artifacts.model)
-        elapsed = time.perf_counter() - started
-        status_name = solver.StatusName(status)
-        if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
-            raise SolverError(
-                f"Scenario A CP-SAT solve ended with {status_name}; no schedule was extracted. "
-                "Increase the time limit or inspect the input/topology diagnostics."
-            )
-
-        schedule = self._extract_schedule(artifacts, solver)
-        weighted_score = scenario_a_score(prepared.instance, schedule, calendar=prepared.calendar)
-        diagnostics = SolveDiagnostics(
-            status=status_name,
-            objective_value_scaled=solver.ObjectiveValue(),
-            weighted_score=weighted_score,
-            solve_seconds=elapsed,
-            activity_count=len(prepared.activities),
-            scheduled_access_rows=len(schedule.access_assignments),
-            occupancy_rows=len(schedule.occupancy_assignments),
-            contract_count=len(schedule.contract_results),
-        )
-        result = SolveResult(schedule=schedule, diagnostics=diagnostics)
-        self.last_result = result
-        return result
-
-    def _build_model(
-        self, prepared: PreparedInstance, policy: ScenarioPolicy
-    ) -> _ModelArtifacts:
         model = cp_model.CpModel()
-        horizon = prepared.calendar.horizon_weeks
-        activities = prepared.activities
-        activity_by_id = {item.activity.activity_id: item for item in activities}
+        x: dict[tuple[str, int], cp_model.IntVar] = {}
+        eclo: dict[tuple[str, int], cp_model.IntVar] = {}
+        night: dict[tuple[str, int, int], cp_model.IntVar] = {}
+        end_week: dict[str, cp_model.IntVar] = {}
+        overrun_days: dict[str, cp_model.IntVar] = {}
 
-        assignments: dict[tuple[str, int, int], Any] = {}
-        activity_week: dict[tuple[str, int], Any] = {}
-        group_assignments: dict[tuple[str, str, int, int], Any] = {}
-
-        # Every activity receives exactly its declared number of standard
-        # accesses.  A week has at most one access for one activity, while the
-        # access-night index remains local to contract + activity type + week.
-        for item in activities:
-            activity_id = item.activity.activity_id
-            max_night = item.project.number_of_maximum_access_per_week
-            week_variables: list[Any] = []
-            for week in item.candidate_weeks:
-                week_var = model.NewBoolVar(f"access_{activity_id}_w{week}")
-                activity_week[(activity_id, week)] = week_var
-                week_variables.append(week_var)
-                night_variables = []
-                for night in range(1, max_night + 1):
-                    assignment = model.NewBoolVar(
-                        f"access_{activity_id}_w{week}_n{night}"
+        # Access assignment and workload conservation.  Scaling work units by
+        # two keeps the model integral: a standard access yields 2, ECLO 3.
+        for activity_id, activity in activities.items():
+            candidate_weeks = range(facts[activity_id].planned_week, horizon + 1)
+            project = projects[activity.contract_number]
+            for week in weeks:
+                x[activity_id, week] = model.NewBoolVar(f"x_{activity_id}_{week}")
+                eclo[activity_id, week] = model.NewBoolVar(f"e_{activity_id}_{week}")
+                model.Add(eclo[activity_id, week] <= x[activity_id, week])
+                if week not in candidate_weeks:
+                    model.Add(x[activity_id, week] == 0)
+                if scenario == Scenario.A:
+                    model.Add(eclo[activity_id, week] == 0)
+                for access_night in range(1, project.number_of_maximum_access_per_week + 1):
+                    night[activity_id, week, access_night] = model.NewBoolVar(
+                        f"night_{activity_id}_{week}_{access_night}"
                     )
-                    assignments[(activity_id, week, night)] = assignment
-                    night_variables.append(assignment)
-                model.Add(_sum(night_variables) == week_var)
-            model.Add(_sum(week_variables) == item.activity.total_accesses)
+                model.Add(
+                    sum(
+                        night[activity_id, week, access_night]
+                        for access_night in range(1, project.number_of_maximum_access_per_week + 1)
+                    )
+                    == x[activity_id, week]
+                )
+            delivered = 2 * sum(x[activity_id, week] for week in weeks) + sum(
+                eclo[activity_id, week] for week in weeks
+            )
+            model.Add(delivered >= 2 * activity.total_accesses)
+            # Prevent redundant access rows while allowing the unavoidable 0.5
+            # unit overshoot caused by integral ECLO decisions.
+            model.Add(delivered <= 2 * activity.total_accesses + 1)
 
-        # Weekly allocation and workfront constraints.  The used-night flags
-        # are deliberately contract/type/week local, matching the CSV contract.
-        by_contract_type_week: dict[tuple[str, str, int], list[PreparedActivity]] = defaultdict(list)
-        for item in activities:
-            for week in item.candidate_weeks:
-                by_contract_type_week[
-                    (item.activity.contract_number, item.activity.activity_type, week)
-                ].append(item)
+            end_week[activity_id] = model.NewIntVar(1, horizon, f"end_{activity_id}")
+            model.AddMaxEquality(
+                end_week[activity_id],
+                [week * x[activity_id, week] for week in weeks],
+            )
+            planned_offset = (project.planned_completion_date - rules.horizon_start).days
+            max_overrun = max(0, horizon * 7 - 1 - planned_offset)
+            overrun_days[activity_id] = model.NewIntVar(0, max_overrun, f"late_{activity_id}")
+            model.AddMaxEquality(
+                overrun_days[activity_id],
+                [7 * end_week[activity_id] - 1 - planned_offset, 0],
+            )
+            if scenario == Scenario.B:
+                model.Add(overrun_days[activity_id] == 0)
 
-        for (contract, activity_type, week), members in sorted(by_contract_type_week.items()):
-            project = prepared.projects[contract]
-            for night in range(1, project.number_of_maximum_access_per_week + 1):
-                flags = [
-                    assignments[(item.activity.activity_id, week, night)]
-                    for item in members
+        # Contract/type nightly workfronts.  The selected night labels also
+        # guarantee the published cap on distinct access-night values.
+        by_contract_type: dict[tuple[str, str], list[str]] = defaultdict(list)
+        for activity in instance.activities:
+            by_contract_type[activity.contract_number, activity.activity_type].append(activity.activity_id)
+        for (contract, _activity_type), member_ids in by_contract_type.items():
+            project = projects[contract]
+            for week in weeks:
+                for access_night in range(1, project.number_of_maximum_access_per_week + 1):
+                    model.Add(
+                        sum(night[activity_id, week, access_night] for activity_id in member_ids)
+                        <= project.number_of_workfronts
+                    )
+
+        baseline_access = {
+            (item.activity_id, item.access_seq): item
+            for item in (baseline.access_assignments if baseline else [])
+        }
+        if scenario_change and scenario_change.locked_placements and baseline is None:
+            raise SolveError("locked placements require the referenced baseline schedule")
+        if scenario_change:
+            for key in scenario_change.locked_placements:
+                assignment = baseline_access.get((key.activity_id, key.access_seq))
+                if assignment is None:
+                    raise SolveError(
+                        f"locked placement {key.activity_id}/{key.access_seq} is absent from the baseline"
+                    )
+                activity = activities.get(key.activity_id)
+                if activity is None:
+                    raise SolveError(f"locked placement references unknown activity {key.activity_id}")
+                project = projects[activity.contract_number]
+                if assignment.access_night > project.number_of_maximum_access_per_week:
+                    raise SolveError(f"baseline access night is invalid for {key.activity_id}")
+                model.Add(x[key.activity_id, assignment.week] == 1)
+                model.Add(
+                    sum(x[key.activity_id, week] for week in range(1, assignment.week))
+                    == key.access_seq - 1
+                )
+                model.Add(night[key.activity_id, assignment.week, assignment.access_night] == 1)
+                model.Add(eclo[key.activity_id, assignment.week] == assignment.eclo)
+
+        # Finish-to-start precedence is strict by week, including cross-contract
+        # links.  Pairwise forbidden week combinations are strong and compact
+        # for this small discrete horizon.
+        for activity in instance.activities:
+            predecessor = activity.predecessor_activity_id
+            if not predecessor:
+                continue
+            for predecessor_week in weeks:
+                for successor_week in range(1, predecessor_week + 1):
+                    model.Add(
+                        x[predecessor, predecessor_week] + x[activity.activity_id, successor_week] <= 1
+                    )
+
+        # A connected location footprint is packed into one legal possession in
+        # a week.  This canonical grouping removes slot-label symmetry (the
+        # largest source of search time) and matches the organiser diagnostic:
+        # overlapping activities in different groups are closure violations.
+        # Supply is still checked because a zero-capacity override makes the
+        # location unavailable.  More than one possession is useful only for
+        # spatially distinct footprints and is counted independently there.
+        used: dict[tuple[str, int], cp_model.IntVar] = {}
+        excess: dict[tuple[str, int], cp_model.IntVar] = {}
+
+        for location, member_ids in eligible_by_location.items():
+            for week in weeks:
+                nominal = overrides.get((location, week), supply.get(location, 0))
+                member_vars = [x[activity_id, week] for activity_id in member_ids]
+                used[location, week] = model.NewBoolVar(f"used_{abs(hash(location))}_{week}")
+                model.Add(sum(member_vars) >= used[location, week])
+                model.Add(sum(member_vars) <= 4 * used[location, week])
+                pm_vars = [
+                    x[activity_id, week]
+                    for activity_id in member_ids
+                    if projects[activities[activity_id].contract_number].access_type == AccessType.PM
                 ]
-                used = model.NewBoolVar(
-                    f"used_night_{contract}_{activity_type}_w{week}_n{night}"
-                )
-                for flag in flags:
-                    model.Add(flag <= used)
-                model.Add(used <= _sum(flags))
-                model.Add(_sum(flags) <= project.number_of_workfronts)
+                pc_vars = [
+                    x[activity_id, week]
+                    for activity_id in member_ids
+                    if projects[activities[activity_id].contract_number].access_type == AccessType.PC
+                ]
+                if pm_vars:
+                    model.Add(sum(pm_vars) <= 1)
+                    model.Add(sum(member_vars) <= 4 - 3 * sum(pm_vars))
+                if pc_vars:
+                    model.Add(sum(pc_vars) <= 1)
+                if nominal == 0 and scenario == Scenario.A:
+                    model.Add(used[location, week] == 0)
+                excess[location, week] = model.NewBoolVar(f"excess_{abs(hash(location))}_{week}")
+                if nominal == 0:
+                    model.Add(excess[location, week] == used[location, week])
+                else:
+                    model.Add(excess[location, week] == 0)
+                if scenario == Scenario.C and nominal == 0:
+                    # The one published elastic possession is represented by
+                    # this Boolean; no second group is emitted.
+                    model.Add(used[location, week] <= 1)
 
-        # A location has at most supply_capacity possession groups in a week.
-        # Internal group assignments cover the complete closure footprint.  We
-        # emit only base-location rows, because the official occupancy schema
-        # describes where the activity works, not hidden buffer closures.
-        for item in activities:
-            activity_id = item.activity.activity_id
-            for location_id in sorted(item.closure_locations):
-                capacity = prepared.supply[location_id]
-                for week in item.candidate_weeks:
-                    group_variables = []
-                    for group in range(capacity):
-                        variable = model.NewBoolVar(
-                            f"group_{activity_id}_{location_id}_w{week}_g{group}"
-                        )
-                        group_assignments[(activity_id, location_id, week, group)] = variable
-                        group_variables.append(variable)
-                    week_var = activity_week[(activity_id, week)]
-                    if group_variables:
-                        model.Add(_sum(group_variables) == week_var)
-                    else:
-                        model.Add(week_var == 0)
-
-        members_by_location: dict[str, list[PreparedActivity]] = defaultdict(list)
-        for item in activities:
-            for location_id in sorted(item.closure_locations):
-                members_by_location[location_id].append(item)
-
-        for location_id, members in sorted(members_by_location.items()):
-            capacity = prepared.supply[location_id]
-            for week in range(1, horizon + 1):
-                for group in range(capacity):
-                    group_members = [
-                        item
-                        for item in members
-                        if week in item.candidate_weeks
-                    ]
-                    pm_count = _sum(
-                        [
-                            group_assignments[(item.activity.activity_id, location_id, week, group)]
-                            for item in group_members
-                            if item.project.access_type.value == "PM"
-                        ]
-                    )
-                    pc_count = _sum(
-                        [
-                            group_assignments[(item.activity.activity_id, location_id, week, group)]
-                            for item in group_members
-                            if item.project.access_type.value == "PC"
-                        ]
-                    )
-                    c_count = _sum(
-                        [
-                            group_assignments[(item.activity.activity_id, location_id, week, group)]
-                            for item in group_members
-                            if item.project.access_type.value == "C"
-                        ]
-                    )
-                    model.Add(pm_count <= 1)
-                    model.Add(pc_count <= 1)
-                    model.Add(c_count <= 4)
-                    # PM must be alone; otherwise PC + up to three C or up to
-                    # four C is legal.  With no PM, the inequality below gives
-                    # PC + C <= 4, hence at most three C beside one PC.
-                    model.Add(4 * pm_count + pc_count + c_count <= 4)
-
-        # Different internal groups represent separate possession slots within
-        # the week.  A closure may share a slot only when the two activities are
-        # proven to be one legal co-sharing possession at a common base
-        # location.  This is the strongest closure rule expressible without
-        # inventing a global access-night identifier (the published
-        # `access_night` is contract/type/week-local).
-        for left_index, left in enumerate(activities):
-            left_id = left.activity.activity_id
-            for right in activities[left_index + 1 :]:
-                right_id = right.activity.activity_id
-                common_base = left.base_locations & right.base_locations
-                shared_types = {
-                    left.project.access_type.value,
-                    right.project.access_type.value,
-                }
-                can_share = shared_types in ({"C"}, {"C", "PC"})
-                common_closure = left.closure_locations & right.closure_locations
-                if not common_closure:
+        # The organiser reports a closure conflict when a scheduled activity is
+        # inside another possession group's derived closure.  Activities with a
+        # common occupied location may coexist only by sharing a legal slot at
+        # every common location; disjoint works whose closures touch cannot.
+        activity_ids = sorted(activities)
+        for index, left in enumerate(activity_ids):
+            for right in activity_ids[index + 1 :]:
+                left_hits_right = facts[left].locations & facts[right].closure
+                right_hits_left = facts[right].locations & facts[left].closure
+                if not left_hits_right and not right_hits_left:
                     continue
-                common_weeks = sorted(set(left.candidate_weeks) & set(right.candidate_weeks))
-                for week in common_weeks:
-                    left_week = activity_week[(left_id, week)]
-                    right_week = activity_week[(right_id, week)]
-                    same_possession = model.NewBoolVar(
-                        f"same_possession_{left_id}_{right_id}_w{week}"
-                    )
-                    model.Add(same_possession <= left_week)
-                    model.Add(same_possession <= right_week)
-                    same_base_flags = []
-                    if can_share:
-                        for location_id in sorted(common_base):
-                            capacity = prepared.supply[location_id]
-                            for group in range(capacity):
-                                left_group = group_assignments[
-                                    (left_id, location_id, week, group)
-                                ]
-                                right_group = group_assignments[
-                                    (right_id, location_id, week, group)
-                                ]
-                                same_base = model.NewBoolVar(
-                                    f"same_base_{left_id}_{right_id}_{location_id}_w{week}_g{group}"
-                                )
-                                model.Add(same_base <= left_group)
-                                model.Add(same_base <= right_group)
-                                model.Add(same_base >= left_group + right_group - 1)
-                                same_base_flags.append(same_base)
-                    for flag in same_base_flags:
-                        model.Add(same_possession >= flag)
-                    model.Add(same_possession <= _sum(same_base_flags))
+                common = facts[left].locations & facts[right].locations
+                for week in weeks:
+                    if not common:
+                        model.Add(x[left, week] + x[right, week] <= 1)
+                        continue
+                    # Common locations use the canonical shared possession and
+                    # are therefore exempt from each other's buffers.
 
-                    for location_id in sorted(common_closure):
-                        capacity = prepared.supply[location_id]
-                        for group in range(capacity):
-                            left_group = group_assignments[
-                                (left_id, location_id, week, group)
-                            ]
-                            right_group = group_assignments[
-                                (right_id, location_id, week, group)
-                            ]
-                            # Without a proven shared base possession, two
-                            # activities may not occupy the same closure slot.
-                            model.Add(left_group + right_group <= 1 + same_possession)
+        # Scenario C permits one independently chosen two-week ECLO window per
+        # affected line.  A Live interchange closure naturally belongs to both.
+        if scenario == Scenario.C:
+            window_start = {
+                line.line_code: model.NewIntVar(1, horizon, f"eclo_window_{line.line_code}")
+                for line in instance.lines
+            }
+            for activity_id in activity_ids:
+                for week in weeks:
+                    for line in facts[activity_id].line_codes:
+                        model.Add(window_start[line] <= week).OnlyEnforceIf(eclo[activity_id, week])
+                        model.Add(week <= window_start[line] + 1).OnlyEnforceIf(eclo[activity_id, week])
 
-        first_week: dict[str, Any] = {}
-        last_week: dict[str, Any] = {}
-        overrun_days: dict[str, Any] = {}
-        objective_terms: list[Any] = []
-        scaled_contract_weight = {1: 1000, 2: 100, 3: 10}
-        scaled_activity_nudge = {1: 3, 2: 2, 3: 0}
-
-        for item in activities:
-            activity_id = item.activity.activity_id
-            first_values = []
-            last_values = []
-            for week in item.candidate_weeks:
-                access = activity_week[(activity_id, week)]
-                first_value = model.NewIntVar(1, horizon + 1, f"first_if_{activity_id}_w{week}")
-                last_value = model.NewIntVar(0, horizon, f"last_if_{activity_id}_w{week}")
-                model.Add(first_value == week).OnlyEnforceIf(access)
-                model.Add(first_value == horizon + 1).OnlyEnforceIf(access.Not())
-                model.Add(last_value == week).OnlyEnforceIf(access)
-                model.Add(last_value == 0).OnlyEnforceIf(access.Not())
-                first_values.append(first_value)
-                last_values.append(last_value)
-
-            first = model.NewIntVar(1, horizon, f"first_week_{activity_id}")
-            last = model.NewIntVar(1, horizon, f"last_week_{activity_id}")
-            model.AddMinEquality(first, first_values)
-            model.AddMaxEquality(last, last_values)
-            first_week[activity_id] = first
-            last_week[activity_id] = last
-
-            overrun_table = [0]
-            for week in range(1, horizon + 1):
-                overrun_table.append(
-                    max(
-                        0,
-                        (
-                            prepared.calendar.week_end(week)
-                            - item.project.planned_completion_date
-                        ).days,
-                    )
+        # Official objective, integer-scaled by ten to preserve the 0.2/0.3
+        # activity-priority nudges exactly.  A tiny lexicographic tie-breaker
+        # favours fewer accesses/possessions and earlier completion without ever
+        # worsening the published score.
+        weighted_overrun_terms = []
+        for activity_id, activity in activities.items():
+            project = projects[activity.contract_number]
+            base = {1: 100, 2: 10, 3: 1}[project.contract_priority]
+            nudge_tenths = {1: 3, 2: 2, 3: 0}[activity.activity_priority]
+            weighted_overrun_terms.append(base * (10 + nudge_tenths) * overrun_days[activity_id])
+        primary_terms = []
+        if scenario != Scenario.B:
+            primary_terms.extend(weighted_overrun_terms)
+        if scenario != Scenario.A:
+            primary_terms.append(70 * sum(excess.values()))
+            primary_terms.append(50 * sum(eclo.values()))
+        primary = sum(primary_terms)
+        compactness = sum(x.values()) + sum(used.values()) + sum(end_week.values())
+        compactness_bound = len(x) + len(used) + horizon * len(end_week) + 1
+        changed: list[cp_model.IntVar] = []
+        if baseline:
+            for assignment in baseline.access_assignments:
+                if assignment.activity_id not in activities or not 1 <= assignment.week <= horizon:
+                    continue
+                project = projects[activities[assignment.activity_id].contract_number]
+                if assignment.access_night > project.number_of_maximum_access_per_week:
+                    continue
+                variable = model.NewBoolVar(
+                    f"changed_{assignment.activity_id}_{assignment.access_seq}"
                 )
-            overrun = model.NewIntVar(0, max(overrun_table), f"overrun_{activity_id}")
-            model.AddElement(last, overrun_table, overrun)
-            overrun_days[activity_id] = overrun
-
-            base_weight = scaled_contract_weight[item.project.contract_priority]
-            nudge = scaled_activity_nudge[item.activity.activity_priority]
-            objective_terms.append((base_weight + base_weight * nudge // 10) * overrun)
-
-        # Predecessor finish-to-start is strictly later by week, including
-        # cross-contract predecessor references.
-        for item in activities:
-            predecessor = item.activity.predecessor_activity_id
-            if predecessor:
-                model.Add(last_week[predecessor] + 1 <= first_week[item.activity.activity_id])
-
-        model.Minimize(_sum(objective_terms))
-        return _ModelArtifacts(
-            model=model,
-            prepared=prepared,
-            policy=policy,
-            assignments=assignments,
-            activity_week=activity_week,
-            group_assignments=group_assignments,
-            first_week=first_week,
-            last_week=last_week,
-            overrun_days=overrun_days,
-        )
-
-    def _extract_schedule(self, artifacts: _ModelArtifacts, solver: Any) -> ScenarioSchedule:
-        prepared = artifacts.prepared
-        access_assignments: list[AccessAssignment] = []
-        occupancy_assignments: list[OccupancyAssignment] = []
-        selected_weeks_by_activity: dict[str, list[int]] = {}
-
-        for item in prepared.activities:
-            activity_id = item.activity.activity_id
-            selected: list[tuple[int, int]] = []
-            for week in item.candidate_weeks:
-                for night in range(1, item.project.number_of_maximum_access_per_week + 1):
-                    variable = artifacts.assignments[(activity_id, week, night)]
-                    if solver.Value(variable):
-                        selected.append((week, night))
-            selected.sort()
-            if len(selected) != item.activity.total_accesses:
-                raise SolverError(
-                    f"internal extraction error: {activity_id} has {len(selected)} accesses, "
-                    f"expected {item.activity.total_accesses}."
+                model.Add(variable >= 1 - x[assignment.activity_id, assignment.week])
+                model.Add(
+                    variable
+                    >= 1 - night[assignment.activity_id, assignment.week, assignment.access_night]
                 )
-            selected_weeks_by_activity[activity_id] = [week for week, _ in selected]
-            for access_seq, (week, night) in enumerate(selected, start=1):
-                access_assignments.append(
+                if assignment.eclo:
+                    model.Add(variable >= 1 - eclo[assignment.activity_id, assignment.week])
+                else:
+                    model.Add(variable >= eclo[assignment.activity_id, assignment.week])
+                changed.append(variable)
+        secondary = compactness + compactness_bound * sum(changed)
+        secondary_bound = compactness_bound * (len(changed) + 1)
+        model.Minimize(primary * secondary_bound + secondary)
+
+        solver = cp_model.CpSolver()
+        solver.parameters.max_time_in_seconds = self.config.max_time_seconds
+        solver.parameters.num_search_workers = self.config.workers
+        solver.parameters.random_seed = self.config.random_seed
+        solver.parameters.log_search_progress = self.config.log_search_progress
+        solver.parameters.cp_model_presolve = True
+        solver.parameters.symmetry_level = 2
+        status = solver.Solve(model)
+        self.last_status = solver.StatusName(status)
+        self.last_wall_time_seconds = solver.WallTime()
+        if status not in (cp_model.FEASIBLE, cp_model.OPTIMAL):
+            raise SolveError(
+                f"CP-SAT returned {solver.StatusName(status)} after {solver.WallTime():.2f}s; "
+                "no schedule may be exported"
+            )
+
+        access_rows: list[AccessAssignment] = []
+        occupancy_rows: list[OccupancyAssignment] = []
+        for activity_id in activity_ids:
+            sequence = 0
+            for week in weeks:
+                if not solver.BooleanValue(x[activity_id, week]):
+                    continue
+                sequence += 1
+                project = projects[activities[activity_id].contract_number]
+                selected_night = next(
+                    value
+                    for value in range(1, project.number_of_maximum_access_per_week + 1)
+                    if solver.BooleanValue(night[activity_id, week, value])
+                )
+                access_rows.append(
                     AccessAssignment(
                         activity_id=activity_id,
-                        access_seq=access_seq,
+                        access_seq=sequence,
                         week=week,
-                        eclo=0,
-                        access_night=night,
+                        eclo=int(solver.BooleanValue(eclo[activity_id, week])),
+                        access_night=selected_night,
                     )
                 )
-                for location_id in sorted(item.base_locations):
-                    capacity = prepared.supply[location_id]
-                    selected_group = next(
-                        (
-                            group
-                            for group in range(capacity)
-                            if solver.Value(
-                                artifacts.group_assignments[
-                                    (activity_id, location_id, week, group)
-                                ]
-                            )
-                        ),
-                        None,
-                    )
-                    if selected_group is None:
-                        raise SolverError(
-                            f"internal extraction error: no possession group for {activity_id}, "
-                            f"{location_id}, week {week}."
-                        )
-                    occupancy_assignments.append(
+                for location in sorted(facts[activity_id].locations):
+                    occupancy_rows.append(
                         OccupancyAssignment(
                             activity_id=activity_id,
                             week=week,
-                            location_id=location_id,
-                            co_share_group=f"p{selected_group + 1}",
+                            location_id=location,
+                            co_share_group="p1",
                         )
                     )
 
-        completion_by_contract: dict[str, Any] = {}
-        for item in prepared.activities:
-            weeks = selected_weeks_by_activity[item.activity.activity_id]
-            completion = prepared.calendar.week_end(max(weeks))
-            previous = completion_by_contract.get(item.activity.contract_number)
-            completion_by_contract[item.activity.contract_number] = (
-                completion if previous is None else max(previous, completion)
-            )
-
-        contract_results: list[ContractResult] = []
-        for project in sorted(prepared.projects.values(), key=lambda item: item.contract_number):
-            completion = completion_by_contract.get(project.contract_number)
-            if completion is None:
-                raise SolverError(
-                    f"contract {project.contract_number} has no activities and cannot produce RESULTS.csv."
-                )
-            contract_results.append(
+        result_rows: list[ContractResult] = []
+        activities_by_contract: dict[str, list[str]] = defaultdict(list)
+        for activity in instance.activities:
+            activities_by_contract[activity.contract_number].append(activity.activity_id)
+        for contract_number, project in projects.items():
+            completion_week = max(solver.Value(end_week[item]) for item in activities_by_contract[contract_number])
+            completion_date = rules.horizon_start + timedelta(days=completion_week * 7 - 1)
+            result_rows.append(
                 ContractResult(
-                    scenario=Scenario.A,
-                    contract_number=project.contract_number,
-                    simulated_completion_date=completion,
-                    overrun_days=max(0, (completion - project.planned_completion_date).days),
+                    scenario=scenario,
+                    contract_number=contract_number,
+                    simulated_completion_date=completion_date,
+                    overrun_days=max(0, (completion_date - project.planned_completion_date).days),
                 )
             )
 
-        access_assignments.sort(key=lambda item: (item.activity_id, item.access_seq))
-        occupancy_assignments.sort(
-            key=lambda item: (item.activity_id, item.week, item.location_id)
+        schedule = ScenarioSchedule(
+            scenario=scenario,
+            access_assignments=access_rows,
+            occupancy_assignments=occupancy_rows,
+            contract_results=result_rows,
         )
-        return ScenarioSchedule(
-            scenario=Scenario.A,
-            access_assignments=access_assignments,
-            occupancy_assignments=occupancy_assignments,
-            contract_results=contract_results,
+        report = validate_schedule(instance, schedule, overrides)
+        if report.hard_violations:
+            sample = "; ".join(str(item["detail"]) for item in report.hard_violations[:5])
+            raise SolveError(f"internal post-solve validation failed: {sample}")
+        return schedule
+
+
+def main() -> int:
+    from app.ingestion.csv_loader import load_instance
+
+    parser = argparse.ArgumentParser(description="Solve a PS1 instance with OR-Tools CP-SAT.")
+    parser.add_argument("--instance", type=Path, required=True)
+    parser.add_argument("--scenario", type=Scenario, required=True, choices=list(Scenario))
+    parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--time-limit", type=float, default=120.0)
+    parser.add_argument("--workers", type=int, default=max(1, min(8, os.cpu_count() or 1)))
+    parser.add_argument("--log-search", action="store_true")
+    args = parser.parse_args()
+    solver = CpSatRailSolver(
+        SolverConfig(
+            max_time_seconds=args.time_limit,
+            workers=args.workers,
+            log_search_progress=args.log_search,
         )
+    )
+    try:
+        schedule = solver.solve_bundle(load_instance(args.instance), args.scenario)
+    except SolveError as error:
+        parser.error(str(error))
+    write_submission(schedule, args.output)
+    report = validate_schedule(load_instance(args.instance), schedule)
+    print(
+        f"scenario={args.scenario.value} status={solver.last_status} "
+        f"wall_time={solver.last_wall_time_seconds:.2f}s accesses={len(schedule.access_assignments)} "
+        f"score={report.soft_scores.get('objective_score')} output={args.output}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

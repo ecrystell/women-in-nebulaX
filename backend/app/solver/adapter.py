@@ -1,4 +1,4 @@
-"""Adapter from the API's InputInstance contract to the Scenario A solver."""
+"""Adapter from the API's InputInstance contract to the Scenario A/C solvers."""
 
 from __future__ import annotations
 
@@ -8,13 +8,17 @@ from ..domain.models import Scenario
 from ..domain.preprocessing import PreparedInstance, PreparationError
 from .cp_sat import ScenarioASolver, SolveResult
 from .policy import UnsupportedScenarioError
+from .scenario_c import ScenarioCSolver
 
 
 class CpSatSolverAdapter:
-    """Implement the existing RunService solver protocol for Scenario A."""
+    """Implement the existing RunService solver protocol for Scenario A/C."""
 
     def __init__(self, *, time_limit_seconds: float = 60.0) -> None:
-        self.solver = ScenarioASolver(time_limit_seconds=time_limit_seconds)
+        self.solvers = {
+            Scenario.A: ScenarioASolver(time_limit_seconds=time_limit_seconds),
+            Scenario.C: ScenarioCSolver(time_limit_seconds=time_limit_seconds),
+        }
         self.last_result: SolveResult | None = None
 
     def solve(
@@ -24,7 +28,12 @@ class CpSatSolverAdapter:
         scenario_change: ScenarioChange | None = None,
     ):
         try:
-            result = self.solver.solve_prepared_with_diagnostics(prepared_instance, scenario, scenario_change)
+            solver = self.solvers.get(scenario)
+            if solver is None:
+                raise UnsupportedScenarioError(
+                    f"Scenario {scenario.value} is not implemented by the CP-SAT adapter."
+                )
+            result = solver.solve_prepared_with_diagnostics(prepared_instance, scenario, scenario_change)
         except UnsupportedScenarioError as error:
             raise ScenarioUnavailable(str(error)) from error
         except PreparationError as error:

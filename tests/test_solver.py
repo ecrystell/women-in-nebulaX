@@ -53,10 +53,11 @@ def test_scenario_a_access_nights_are_local_and_within_contract_caps() -> None:
     )
 
 
-def test_future_scenarios_fail_at_central_policy_boundary() -> None:
+def test_scenario_b_still_fails_at_central_policy_boundary() -> None:
     try:
         policy_for(Scenario.B)
     except UnsupportedScenarioError as error:
-        assert "only Scenario A" in str(error)
+        assert "Scenario B" in str(error)
+        assert "Scenario C" in str(error)
     else:
         raise AssertionError("Scenario B must not be implemented in this workstream")

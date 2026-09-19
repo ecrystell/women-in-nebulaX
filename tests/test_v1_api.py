@@ -24,6 +24,7 @@ from app.validation.preflight import load_submission
 ROOT = Path(__file__).resolve().parents[1]
 PUBLIC_DATA = ROOT / "data" / "public-instance"
 SAMPLE_SUBMISSION = PUBLIC_DATA / "sample-submission"
+CLEAN_SCENARIO_A = ROOT / "sample_submission" / "scenario_a"
 
 
 def public_files(exclude: str | None = None, replacement: tuple[str, bytes] | None = None) -> list[tuple[str, tuple[str, bytes, str]]]:
@@ -55,7 +56,7 @@ class CleanSolver:
     def solve(self, prepared_instance, scenario, scenario_change=None) -> SolverOutput:
         self.prepared_instances.append(prepared_instance)
         self.changes.append(scenario_change)
-        schedule = load_submission(SAMPLE_SUBMISSION)
+        schedule = load_submission(CLEAN_SCENARIO_A)
         assert schedule.scenario is scenario
         return SolverOutput(schedule=schedule)
 
@@ -210,18 +211,30 @@ def test_invalid_candidate_fails_preflight_retains_evidence_and_blocks_exports()
     assert export.json()["error"]["code"] == "preflight_not_clean"
 
 
-@pytest.mark.parametrize("scenario", ["B", "C"])
-def test_unimplemented_scenarios_are_blocked_not_silently_solved_as_a(scenario: str) -> None:
+def test_unimplemented_scenario_b_is_blocked_not_silently_solved_as_a() -> None:
     set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
     client = TestClient(app)
 
-    response = client.post("/api/v1/runs", data={"scenario": scenario}, files=public_files())
+    response = client.post("/api/v1/runs", data={"scenario": "B"}, files=public_files())
     assert response.status_code == 202
     result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
 
     assert result.status_code == 200
     assert result.json()["status"] == "blocked"
     assert result.json()["problem"]["code"] == "scenario_unavailable"
+
+
+def test_scenario_c_is_supported_and_never_falls_back_to_scenario_a() -> None:
+    set_run_service(CpSatSolverAdapter(time_limit_seconds=1))
+    client = TestClient(app)
+
+    response = client.post("/api/v1/runs", data={"scenario": "C"}, files=public_files())
+    assert response.status_code == 202
+    result = client.get(f"/api/v1/runs/{response.json()['run_id']}")
+
+    assert result.status_code == 200
+    assert result.json()["status"] != "blocked"
+    assert result.json().get("problem", {}).get("code") != "scenario_unavailable"
 
 
 def test_solver_preprocessing_failure_is_reported_without_falling_back() -> None:

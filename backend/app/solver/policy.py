@@ -1,9 +1,4 @@
-"""Scenario policies for the shared CP-SAT scheduling model.
-
-Only Scenario A is implemented in this workstream.  Keeping the policy in a
-single object is intentional: later scenarios should change policy data and
-scenario-specific constraints/objectives, not duplicate the scheduling model.
-"""
+"""Scenario policies for the CP-SAT scheduling models."""
 
 from __future__ import annotations
 
@@ -25,6 +20,7 @@ class ScenarioPolicy:
     planned_completion_hard: bool
     objective_name: str
     objective_scale: int = 10
+    eclo_window_weeks: int | None = None
 
     @property
     def eclo_yield(self) -> int:
@@ -43,15 +39,28 @@ SCENARIO_A_POLICY = ScenarioPolicy(
 )
 
 
+SCENARIO_C_POLICY = ScenarioPolicy(
+    scenario=Scenario.C,
+    allow_eclo=True,
+    allow_supply_excess=True,
+    supply_excess_allowance=1,
+    planned_completion_hard=False,
+    objective_name="priority_weighted_overrun_plus_excess_and_eclo",
+    eclo_window_weeks=2,
+)
+
+
 def policy_for(scenario: Scenario) -> ScenarioPolicy:
     """Return the central policy object for a supported scenario.
 
-    B and C deliberately fail loudly until their scenario-specific rules and
-    objectives are implemented; they must not silently receive A's policy.
+    Scenario B deliberately fails loudly until its scenario-specific rules and
+    objective are implemented; it must not silently receive A or C's policy.
     """
 
     if scenario is Scenario.A:
         return SCENARIO_A_POLICY
+    if scenario is Scenario.C:
+        return SCENARIO_C_POLICY
     raise UnsupportedScenarioError(
-        f"Scenario {scenario.value} is not implemented yet; only Scenario A is available."
+        f"Scenario {scenario.value} is not implemented yet; Scenario A and Scenario C are available."
     )

@@ -188,12 +188,6 @@ class Violation(ApiModel):
     activity_ids: list[str] | None = None
     location_ids: list[str] | None = None
     week: int | None = Field(default=None, gt=0)
-    source_file: str | None = None
-    row: int | None = Field(default=None, ge=2)
-    field: str | None = None
-    co_share_group: str | None = None
-    derived_footprint: list[str] | None = None
-    input_values: dict[str, str | int | float | bool | None] | None = None
 
 
 class ValidatorMetadata(ApiModel):
@@ -230,47 +224,30 @@ class ValidationReport(ApiModel):
     def from_domain(
         cls, report: DomainValidationReport, *, schedule_id: str | None = None
     ) -> "ValidationReport":
-        def violation_from_finding(item: dict[str, Any]) -> Violation:
-            activity_ids = item.get("activity_ids")
-            location_ids = item.get("location_ids")
-            week = item.get("week")
-            row = item.get("row")
-            input_values = item.get("input_values")
-            return Violation(
-                rule=str(item.get("rule", "unknown")),
-                severity="hard",
-                detail=str(item.get("detail", "")),
-                activity_ids=[str(value) for value in activity_ids]
-                if isinstance(activity_ids, list)
-                else None,
-                location_ids=[str(value) for value in location_ids]
-                if isinstance(location_ids, list)
-                else None,
-                week=week if isinstance(week, int) and week > 0 else None,
-                source_file=str(item["source_file"]) if item.get("source_file") else None,
-                row=row if isinstance(row, int) and row >= 2 else None,
-                field=str(item["field"]) if item.get("field") else None,
-                co_share_group=str(item["co_share_group"])
-                if item.get("co_share_group")
-                else None,
-                derived_footprint=[str(value) for value in item["derived_footprint"]]
-                if isinstance(item.get("derived_footprint"), list)
-                else None,
-                input_values={
-                    str(key): value
-                    for key, value in input_values.items()
-                    if isinstance(value, (str, int, float, bool)) or value is None
-                }
-                if isinstance(input_values, dict)
-                else None,
-            )
-
         return cls(
             schedule_id=schedule_id,
             status=ValidationStatus(report.status.value),
             feasible=report.feasible,
             message=report.message,
-            hard_violations=[violation_from_finding(item) for item in report.hard_violations],
+            hard_violations=[
+                Violation(
+                    rule=str(item.get("rule", "unknown")),
+                    severity="hard",
+                    detail=str(item.get("detail", "")),
+                    activity_ids=(
+                        [str(value) for value in item["activity_ids"]]
+                        if isinstance(item.get("activity_ids"), list)
+                        else None
+                    ),
+                    location_ids=(
+                        [str(value) for value in item["location_ids"]]
+                        if isinstance(item.get("location_ids"), list)
+                        else None
+                    ),
+                    week=(int(item["week"]) if item.get("week") is not None else None),
+                )
+                for item in report.hard_violations
+            ],
             soft_scores=report.soft_scores,
             detail=report.detail,
         )

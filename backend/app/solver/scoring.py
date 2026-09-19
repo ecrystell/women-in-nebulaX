@@ -1,4 +1,4 @@
-"""Scenario A score helpers independent from CP-SAT extraction."""
+"""Published score helpers independent from CP-SAT extraction."""
 
 from __future__ import annotations
 
@@ -55,3 +55,34 @@ def scenario_a_score(
     """Return the published Scenario A score; no ECLO/excess terms exist in A."""
 
     return priority_weighted_overrun(instance, schedule, calendar=calendar)
+
+
+def excess_access_nights(instance: InstanceBundle, schedule: ScenarioSchedule) -> int:
+    """Count visible possession groups above nominal location supply."""
+
+    prepared = require_prepared(instance)
+    groups_by_location_week: set[tuple[str, int, str]] = {
+        (assignment.location_id, assignment.week, assignment.co_share_group)
+        for assignment in schedule.occupancy_assignments
+    }
+    counts: defaultdict[tuple[str, int], int] = defaultdict(int)
+    for location_id, week, _group in groups_by_location_week:
+        counts[(location_id, week)] += 1
+    return sum(
+        max(0, count - prepared.supply[location_id])
+        for (location_id, _week), count in counts.items()
+        if location_id in prepared.supply
+    )
+
+
+def scenario_c_score(
+    instance: InstanceBundle, schedule: ScenarioSchedule, *, calendar: PlanningCalendar | None = None
+) -> float:
+    """Return Scenario C's exact combined penalty score."""
+
+    eclo_nights = sum(1 for assignment in schedule.access_assignments if assignment.eclo)
+    return (
+        priority_weighted_overrun(instance, schedule, calendar=calendar)
+        + 7 * excess_access_nights(instance, schedule)
+        + 5 * eclo_nights
+    )
