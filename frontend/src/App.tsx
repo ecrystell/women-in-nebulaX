@@ -183,7 +183,10 @@ function Calendar({
     weekStart.getUTCMonth(),
     weekStart.getUTCDate() + index
   )));
-  const dayHours = ["00:00", "01:00", "02:00", "03:00", "04:00", "05:00"];
+  const daySlots = Array.from({ length: 24 }, (_, index) => {
+    const minutes = index * 15;
+    return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+  });
 
   const eventForDay = (day: number) => maintenanceEvents.find(
     (event) => event.day === day && event.month === month && event.year === year
@@ -202,6 +205,27 @@ function Calendar({
     onMouseLeave: () => onEventHover(null),
     onBlur: () => onEventHover(null),
   });
+  const moveFocusedDate = (days: number) => {
+    const nextDate = new Date(Date.UTC(year, month, selectedDay + days));
+    const monthOffset = (nextDate.getUTCFullYear() - year) * 12 + nextDate.getUTCMonth() - month;
+    if (monthOffset) onMonthChange(monthOffset);
+    setFocusedDay(nextDate.getUTCDate());
+  };
+  const selectDate = (date: Date) => {
+    const monthOffset = (date.getUTCFullYear() - year) * 12 + date.getUTCMonth() - month;
+    if (monthOffset) onMonthChange(monthOffset);
+    setFocusedDay(date.getUTCDate());
+  };
+  const eventGridRow = (event: MaintenanceEvent) => {
+    const [startValue, endValue] = event.time.split("–");
+    const toMinutes = (value: string) => {
+      const [hours, minutes] = value.split(":").map(Number);
+      return hours * 60 + minutes;
+    };
+    const startSlot = Math.max(0, Math.floor(toMinutes(startValue) / 15));
+    const endSlot = Math.min(daySlots.length, Math.ceil(toMinutes(endValue) / 15));
+    return `${startSlot + 1} / ${Math.max(startSlot + 2, endSlot + 1)}`;
+  };
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
@@ -229,6 +253,18 @@ function Calendar({
           ))}
         </div>
       </div>
+
+      {view !== "month" && (
+        <div className="mt-3 flex items-center justify-between rounded-lg border border-slate-700 bg-slate-950/60 px-2 py-1.5">
+          <button className="calendar-arrow" onClick={() => moveFocusedDate(view === "week" ? -7 : -1)} aria-label={view === "week" ? "Previous week" : "Previous day"}>←</button>
+          <span className="text-center text-xs font-bold text-slate-200">
+            {view === "week"
+              ? `${months[weekDates[0].getUTCMonth()].slice(0, 3)} ${weekDates[0].getUTCDate()} – ${months[weekDates[6].getUTCMonth()].slice(0, 3)} ${weekDates[6].getUTCDate()}`
+              : `${months[month]} ${selectedDay}, ${year}`}
+          </span>
+          <button className="calendar-arrow" onClick={() => moveFocusedDate(view === "week" ? 7 : 1)} aria-label={view === "week" ? "Next week" : "Next day"}>→</button>
+        </div>
+      )}
 
       {view === "month" && (
         <div className="mt-5 grid grid-cols-7 gap-1 text-center text-xs">
@@ -266,7 +302,7 @@ function Calendar({
                 <p className="text-[10px] font-bold uppercase text-slate-500">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()]}</p>
                 <p className="mt-1 text-sm font-bold text-white">{date.getUTCDate()}</p>
                 {event && (
-                  <button {...eventHandlers(event)} onClick={() => setFocusedDay(event.day)} className={`mt-3 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
+                  <button {...eventHandlers(event)} onClick={() => selectDate(date)} className={`mt-3 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
                     <span className="block opacity-80">{event.time}</span>
                     <span className="mt-1 block">{event.title}</span>
                   </button>
@@ -282,22 +318,31 @@ function Calendar({
           <div className="border-b border-slate-700 px-3 py-2 text-sm font-bold text-white">
             {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][focusedDate.getUTCDay()]}, {months[month]} {selectedDay}
           </div>
-          {dayHours.map((hour) => {
-            const eventsAtHour = focusedEvents.filter((event) => event.time.slice(0, 2) === hour.slice(0, 2));
-            return (
-              <div key={hour} className="grid min-h-11 grid-cols-[3.5rem_1fr] border-b border-slate-800 last:border-b-0">
-                <span className="border-r border-slate-800 px-2 py-2 text-xs font-semibold text-slate-500">{hour}</span>
-                <div className="p-1.5">
-                  {eventsAtHour.map((event) => (
-                    <button key={event.id} {...eventHandlers(event)} className={`w-full rounded-md ${event.colour} px-2 py-1.5 text-left text-xs font-bold text-white`}>
-                      {event.title} <span className="font-medium opacity-80">· {event.time}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {!focusedEvents.length && <p className="px-4 py-5 text-sm text-slate-500">No scheduled maintenance for this day.</p>}
+          <div className="grid grid-cols-[3.7rem_1fr]">
+            <div className="grid border-r border-slate-800" style={{ gridTemplateRows: "repeat(24, minmax(1.25rem, auto))" }}>
+              {daySlots.map((slot, index) => (
+                <span key={slot} className="border-b border-slate-800/80 px-2 pt-0.5 text-[10px] font-semibold text-slate-500" style={{ gridRow: index + 1, gridColumn: 1 }}>
+                  {slot.endsWith(":00") ? slot : ""}
+                </span>
+              ))}
+            </div>
+            <div className="grid p-1.5" style={{ gridTemplateRows: "repeat(24, minmax(1.25rem, auto))" }}>
+              {daySlots.map((slot, index) => (
+                <span key={slot} className="border-b border-slate-800/80" style={{ gridRow: index + 1, gridColumn: 1 }} />
+              ))}
+              {focusedEvents.map((event) => (
+                <button
+                  key={event.id}
+                  {...eventHandlers(event)}
+                  className={`z-10 m-0.5 rounded-md ${event.colour} px-2 py-1 text-left text-xs font-bold text-white shadow-sm`}
+                  style={{ gridRow: eventGridRow(event), gridColumn: 1 }}
+                >
+                  {event.title} <span className="font-medium opacity-85">· {event.time}</span>
+                </button>
+              ))}
+              {!focusedEvents.length && <p className="z-10 row-span-24 self-center px-3 text-sm text-slate-500">No scheduled maintenance for this day.</p>}
+            </div>
+          </div>
         </div>
       )}
 
