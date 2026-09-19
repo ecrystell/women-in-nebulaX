@@ -74,7 +74,11 @@ class VertexDraftGenerator:
             "You convert a controller's disruption request into a review-only JSON draft. "
             "Use only the supplied public reference list. Never invent IDs, make a schedule, "
             "claim feasibility, call tools, or set confirmation. If a reference is ambiguous or "
-            "missing, leave it out and explain it in unresolved_references. Return JSON only."
+            "missing, leave it out and explain it in unresolved_references. Return exactly one JSON "
+            "object with only these keys: supply_overrides (an array of objects with location_id, week, "
+            "and supply_capacity), locked_placements (an array of objects with activity_id and access_seq), "
+            "rationale (string or null), assumptions (array of strings), and unresolved_references "
+            "(array of strings). Return JSON only."
         )
         try:
             client = genai.Client(
@@ -91,7 +95,10 @@ class VertexDraftGenerator:
                     temperature=0,
                     max_output_tokens=700,
                     response_mime_type="application/json",
-                    response_schema=_DraftOutput,
+                    # The Vertex endpoint accepts the model and JSON MIME type, but its
+                    # structured-output schema subset can reject a nested draft model
+                    # before generation.  Pydantic below remains the authoritative,
+                    # strict schema validator for the returned JSON.
                 ),
             )
             parsed = getattr(response, "parsed", None)
