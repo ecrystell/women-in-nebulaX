@@ -8,7 +8,8 @@ const sideWindows = [-3.85, -3.2, -1.3, -0.68, 0.68, 1.3, 3.2, 3.85];
 const doorPositions = [-2.25, 0, 2.25];
 
 function trackOffsetForZ(z: number) {
-  return MathUtils.clamp((z + 36) / 39, 0, 1) * 4.2;
+  // The approach begins farther left, giving the train a longer diagonal pass.
+  return -2.3 + MathUtils.clamp((z + 36) / 39, 0, 1) * 6.7;
 }
 
 function C151CabFront() {
@@ -270,7 +271,7 @@ function Train() {
     const scrollPosition = Math.min(Math.max(scrollProgress.current, 0), 1);
     // Starts briskly, but never reaches the end before the page scroll does.
     const progress = Math.pow(scrollPosition, 0.7);
-    const targetZ = -20 + progress * 23;
+    const targetZ = -28 + progress * 31;
     // Follow the same angled centreline used by the rail bed at every depth.
     const targetX = trackOffsetForZ(targetZ);
 
@@ -280,7 +281,7 @@ function Train() {
   });
 
   return (
-    <group ref={train} position={[0, -0.24, -20]}>
+    <group ref={train} position={[0, -0.24, -28]}>
       <MRTCar />
       <PassengerCar position={[0, 0, -9.85]} />
       <PassengerCar position={[0, 0, -19.7]} />
