@@ -8,7 +8,7 @@ def test_health_reports_unavailable_validator() -> None:
 
     assert response.status_code == 200
     assert response.json() == {
-        "service": "railaccess-ai",
+        "service": "for-rails",
         "phase": "0",
         "status": "ok",
         "validator_status": "unavailable",

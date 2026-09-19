@@ -1,9 +1,9 @@
 services:
-  railaccess:
+  for-rails:
     build:
       context: .
       args:
-        RAILACCESS_BUILD_COMMIT: ${RAILACCESS_BUILD_COMMIT:-unknown}
+        FOR_RAILS_BUILD_COMMIT: ${FOR_RAILS_BUILD_COMMIT:-unknown}
     ports:
       - "8080:8080"
     environment:

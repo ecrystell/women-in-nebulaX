@@ -4,7 +4,7 @@ Use this workflow only after a run has succeeded with zero local hard violations
 A locally clean result remains **unverified** until the organiser website gives
 an authoritative decision.
 
-1. Build or launch with `RAILACCESS_BUILD_COMMIT` set to the full 40-character
+1. Build or launch with `FOR_RAILS_BUILD_COMMIT` set to the full 40-character
    commit being tested. Package creation is intentionally blocked without it.
 2. In the controller, run the eight CSVs, create a manual upload ZIP, and
    download it. The ZIP contains only the three official result CSVs and

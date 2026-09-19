@@ -63,11 +63,11 @@ def get_draft_service(request: Request) -> DisruptionDraftService:
 
 
 def _cookie_name(run_id: str) -> str:
-    return f"railaccess_run_{run_id.replace('-', '')}"
+    return f"for_rails_run_{run_id.replace('-', '')}"
 
 
 def _cookie_secure() -> bool:
-    return os.getenv("RAILACCESS_COOKIE_SECURE", "false").lower() == "true"
+    return os.getenv("FOR_RAILS_COOKIE_SECURE", "false").lower() == "true"
 
 
 def _authorize(request: Request, run_id: str) -> RunRecord:
@@ -113,7 +113,7 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
     if errors:
         raise ApiException(422, "invalid_input_package", "Expected exactly the eight official CSV filenames.", errors)
 
-    with tempfile.TemporaryDirectory(prefix="railaccess-upload-") as temp_dir:
+    with tempfile.TemporaryDirectory(prefix="for-rails-upload-") as temp_dir:
         directory = Path(temp_dir)
         file_checksums: dict[str, str] = {}
         package_bytes = 0
@@ -162,7 +162,7 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
 def health(request: Request) -> dict[str, object]:
     service = get_service(request)
     return {
-        "service": "railaccess-ai",
+        "service": "for-rails",
         "api_version": "v1",
         "status": "ok",
         "validator_status": service.validator.status().status.value,
@@ -275,7 +275,7 @@ def download_submission_package(request: Request, run_id: str, package_id: str) 
     return FileResponse(
         package.bundle_path,
         media_type="application/zip",
-        filename=f"railaccess-submission-{package_id}.zip",
+        filename=f"for-rails-submission-{package_id}.zip",
         headers=NO_STORE_HEADERS,
     )
 
@@ -307,7 +307,7 @@ def download_evidence_record(request: Request, run_id: str, package_id: str) -> 
     return FileResponse(
         path,
         media_type="application/json",
-        filename=f"railaccess-evidence-{package_id}.json",
+        filename=f"for-rails-evidence-{package_id}.json",
         headers=NO_STORE_HEADERS,
     )
 

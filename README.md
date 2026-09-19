@@ -1,4 +1,4 @@
-# RailAccess AI — Track 1 Railway Track Access Optimisation
+# For Rails — Track 1 Railway Track Access Optimisation
 
 An explainable, validator-first decision-support tool for planning nightly railway track possessions across a dual-line network. It assigns every contracted activity to access nights and locations, proves that safety rules are respected, and makes the schedule's trade-offs intelligible to a works controller.
 
@@ -17,7 +17,7 @@ The solution is not just a calendar recommendation. It must:
 
 The network contains tunnel sectors (`SEC`) and platform sectors (`PLAT`) on eastbound and westbound tracks. The two lines are independent except for special `Live`-work rules at the H01–H02 interchange.
 
-## What RailAccess AI does
+## What For Rails does
 
 1. Accepts the eight provided instance CSVs through a guided upload flow.
 2. Builds a network and possession-impact model for every activity.
@@ -174,7 +174,7 @@ Exit code `0` means the implemented local checks found no hard violation; `1` pr
 Set a full Git commit before building the package-capable container:
 
 ```powershell
-$env:RAILACCESS_BUILD_COMMIT = git rev-parse HEAD
+$env:FOR_RAILS_BUILD_COMMIT = git rev-parse HEAD
 docker compose up --build
 ```
 

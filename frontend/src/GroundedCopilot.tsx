@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-import { railAccessApi, RailAccessApiError } from "./api/client";
+import { forRailsApi, ForRailsApiError } from "./api/client";
 import type { CopilotMode, CopilotResponse, RunView } from "./api/types";
 
 type CopilotAnswers = {
@@ -41,7 +41,7 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
     setRequestingMode(requestedMode);
     setNotice("");
     try {
-      const response = await railAccessApi.createCopilotResponse(
+      const response = await forRailsApi.createCopilotResponse(
         run.run_id,
         requestedMode,
         requestedMode === "activity_explanation" ? requestedActivityId : undefined
@@ -56,7 +56,7 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
           }
         : { ...current, [requestedMode]: response });
     } catch (error) {
-      setNotice(error instanceof RailAccessApiError ? error.message : "The grounded copilot is unavailable.");
+      setNotice(error instanceof ForRailsApiError ? error.message : "The grounded copilot is unavailable.");
     } finally {
       setRequestingMode(null);
     }
@@ -70,7 +70,7 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
             <div className="flex min-w-0 items-center gap-3">
               <span aria-hidden="true" className="grid h-9 w-9 shrink-0 place-items-center rounded-xl border border-red-300/25 bg-red-500/10 text-lg">🚇</span>
               <div>
-                <p className="text-sm font-bold text-white">RailAccess Copilot</p>
+                <p className="text-sm font-bold text-white">For Rails Copilot</p>
                 <p className="mt-0.5 text-xs text-slate-400">Evidence-backed schedule brief</p>
               </div>
             </div>
@@ -132,12 +132,12 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
             )}
           </div>
           <div className="border-t border-slate-800 bg-slate-950/70 px-4 py-3 text-[11px] leading-4 text-slate-500">
-            Selected evidence is sent server-side to Gemini. Raw CSVs, exports and organiser reports stay in RailAccess.
+            Selected evidence is sent server-side to Gemini. Raw CSVs, exports and organiser reports stay in For Rails.
           </div>
         </section>
       )}
       {!open && (
-        <button onClick={() => setOpen(true)} className="group flex items-center gap-2 rounded-full border border-red-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-red-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-red-200" aria-label="Open RailAccess Copilot">
+        <button onClick={() => setOpen(true)} className="group flex items-center gap-2 rounded-full border border-red-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-red-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-red-200" aria-label="Open For Rails Copilot">
           <span className="text-2xl transition group-hover:translate-x-0.5">🚇</span><span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-red-100">Ask copilot</span>
         </button>
       )}

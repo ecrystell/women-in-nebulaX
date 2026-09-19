@@ -1,4 +1,4 @@
-# RailAccess AI data contract
+# For Rails data contract
 
 **Status:** proposed v0.1 — review and approve before feature branches diverge.  
 **Source of truth:** the official PS1 brief, then the organiser validator/mentor clarification, then this contract.  

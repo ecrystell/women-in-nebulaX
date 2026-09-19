@@ -524,7 +524,7 @@ def validate_submission(instance_dir: Path, submission_dir: Path) -> ValidationR
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Run RailAccess AI's local, unverified PS1 preflight.")
+    parser = argparse.ArgumentParser(description="Run For Rails' local, unverified PS1 preflight.")
     parser.add_argument("--instance", type=Path, required=True, help="directory containing the eight official input CSVs")
     parser.add_argument("--submission", type=Path, required=True, help="directory containing the three output CSVs")
     args = parser.parse_args()

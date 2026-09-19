@@ -1,4 +1,4 @@
-# RailAccess AI decision log
+# For Rails decision log
 
 **Status:** prepared for the first team decision session. Entries marked **Proposed** are review prompts, not settled product policy.  
 **Decision precedence:** official PS1 specification → organiser validator/mentor clarification → approved entry here → implementation convenience.

@@ -45,10 +45,10 @@ class VertexGeminiGenerator:
     """Uses Cloud Run Application Default Credentials; never accepts an API key."""
 
     def __init__(self) -> None:
-        self.enabled = os.getenv("RAILACCESS_AI_ENABLED", "false").lower() == "true"
-        self.project = os.getenv("RAILACCESS_GCP_PROJECT", "").strip()
-        self.location = os.getenv("RAILACCESS_VERTEX_LOCATION", "global").strip() or "global"
-        self.model_name = os.getenv("RAILACCESS_GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
+        self.enabled = os.getenv("FOR_RAILS_AI_ENABLED", "false").lower() == "true"
+        self.project = os.getenv("FOR_RAILS_GCP_PROJECT", "").strip()
+        self.location = os.getenv("FOR_RAILS_VERTEX_LOCATION", "global").strip() or "global"
+        self.model_name = os.getenv("FOR_RAILS_GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash"
 
     def generate(self, evidence: EvidenceEnvelope, mode: CopilotMode) -> str:
         if not self.enabled or not self.project:
@@ -60,7 +60,7 @@ class VertexGeminiGenerator:
             raise CopilotUnavailable("The Vertex AI client is not installed.") from error
 
         instruction = (
-            "You are RailAccess Copilot. Explain only the supplied deterministic evidence in plain, "
+            "You are the For Rails Copilot. Explain only the supplied deterministic evidence in plain, "
             "controller-friendly language. The reader does not know compact CSV identifiers. Prefer "
             "placement_summaries, closure_footprint_labels, and location_label fields over raw IDs. "
             "For example, say 'Platform on Line Beta, at interchange H01, westbound' rather than "

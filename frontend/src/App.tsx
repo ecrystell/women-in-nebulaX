@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { railAccessApi, RailAccessApiError } from "./api/client";
+import { forRailsApi, ForRailsApiError } from "./api/client";
 import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft } from "./api/types";
 import { TrainScene } from "./TrainScene";
 import { GroundedCopilot } from "./GroundedCopilot";
@@ -316,7 +316,7 @@ function PublicScheduleDownloads() {
         {publicScheduleFiles.map((file) => (
           <a
             key={file.name}
-            href={railAccessApi.getPublicScheduleUrl(file.name)}
+            href={forRailsApi.getPublicScheduleUrl(file.name)}
             className="group rounded-xl border border-slate-700 bg-slate-900/70 p-3 transition hover:border-red-400 hover:bg-red-500/10"
           >
             <p className="font-mono text-sm font-bold text-white">{file.name}</p>
@@ -387,9 +387,9 @@ function SubmissionEvidencePanel({
             <div key={submissionPackage.package_id} className="rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm">
               <p className="font-semibold text-white">Package {submissionPackage.package_id.slice(0, 8)} · commit {submissionPackage.build_commit.slice(0, 12)}</p>
               <div className="mt-2 flex flex-wrap gap-3 text-red-200">
-                <a href={railAccessApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
+                <a href={forRailsApi.getSubmissionPackageUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download ZIP</a>
                 {submissionPackage.organiser_evidence && (
-                  <a href={railAccessApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
+                  <a href={forRailsApi.getEvidenceRecordUrl(run.run_id, submissionPackage.package_id)} className="font-semibold underline">Download evidence JSON</a>
                 )}
               </div>
               {submissionPackage.organiser_evidence && (
@@ -445,7 +445,7 @@ function CopilotButton() {
         <section className="mb-3 w-80 rounded-2xl border border-red-400/30 bg-slate-950/95 p-4 shadow-2xl shadow-red-950/50 backdrop-blur">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-bold text-white">RailAccess Copilot</p>
+              <p className="text-sm font-bold text-white">For Rails Copilot</p>
               <p className="text-xs text-red-200">Grounded schedule assistant</p>
             </div>
             <button className="text-slate-400 hover:text-white" onClick={() => setOpen(false)} aria-label="Close copilot">×</button>
@@ -477,7 +477,7 @@ function CopilotButton() {
       <button
         onClick={() => setOpen((value) => !value)}
         className="group flex h-15 items-center gap-2 rounded-full border border-red-200/40 bg-slate-950/90 px-4 py-3 shadow-lg shadow-red-950/60 backdrop-blur transition hover:-translate-y-1 hover:border-red-200"
-        aria-label="Open RailAccess Copilot"
+        aria-label="Open For Rails Copilot"
       >
         <span className="text-2xl transition group-hover:translate-x-0.5">🚇</span>
         <span className="text-left text-xs font-bold uppercase tracking-[0.14em] text-red-100">Ask copilot</span>
@@ -500,10 +500,10 @@ export default function App() {
   const [runBusy, setRunBusy] = useState(false);
 
   useEffect(() => {
-    railAccessApi.getHealth()
+    forRailsApi.getHealth()
       .then(setHealth)
       .catch(() => setHealth(null));
-    railAccessApi.getCapabilities()
+    forRailsApi.getCapabilities()
       .then(setCapabilities)
       .catch(() => setCapabilities(null));
   }, []);
@@ -529,18 +529,18 @@ export default function App() {
     const runFiles = demandFiles;
     setRefreshNotice(`Uploading the eight CSV demand book for Scenario ${scenario}.`);
     try {
-      let current = await railAccessApi.createRun(scenario, runFiles);
+      let current = await forRailsApi.createRun(scenario, runFiles);
       setRun(current);
       for (let attempt = 0; attempt < 90 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
-        current = await railAccessApi.getRun(current.run_id);
+        current = await forRailsApi.getRun(current.run_id);
         setRun(current);
       }
       setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
       setDemandFiles([]);
       setPage("overview");
     } catch (error) {
-      const detail = error instanceof RailAccessApiError ? error.message : "The run could not be started.";
+      const detail = error instanceof ForRailsApiError ? error.message : "The run could not be started.";
       setRefreshNotice(detail);
     } finally {
       setRunBusy(false);
@@ -551,12 +551,12 @@ export default function App() {
     if (runBusy) return;
     setRunBusy(true);
     try {
-      const demo = await railAccessApi.createPublicDemoRun();
+      const demo = await forRailsApi.createPublicDemoRun();
       setRun(demo);
       setRefreshNotice("Public recovery demonstration loaded. It is unverified and cannot be exported or submitted.");
       setPage("overview");
     } catch (error) {
-      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not open the public recovery demonstration.");
+      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not open the public recovery demonstration.");
     } finally {
       setRunBusy(false);
     }
@@ -566,7 +566,7 @@ export default function App() {
     if (!run || runBusy) return;
     setRunBusy(true);
     try {
-      setRun(await railAccessApi.createPublicDemoReplay(run.run_id, draftId));
+      setRun(await forRailsApi.createPublicDemoReplay(run.run_id, draftId));
     } finally {
       setRunBusy(false);
     }
@@ -574,18 +574,18 @@ export default function App() {
 
   const createDisruptionDraft = async (text: string): Promise<ScenarioChangeDraft> => {
     if (!run) throw new Error("Open the public recovery demonstration first.");
-    return railAccessApi.createDisruptionDraft(run.run_id, text);
+    return forRailsApi.createDisruptionDraft(run.run_id, text);
   };
 
   const createSubmissionPackage = async () => {
     if (!run || runBusy) return;
     setRunBusy(true);
     try {
-      const submissionPackage = await railAccessApi.createSubmissionPackage(run.run_id);
+      const submissionPackage = await forRailsApi.createSubmissionPackage(run.run_id);
       setRun((current) => current ? { ...current, submission_packages: [...current.submission_packages, submissionPackage] } : current);
       setRefreshNotice("Manual upload ZIP created. Download it, submit it on the organiser website, then record reference metadata.");
     } catch (error) {
-      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not create the submission package.");
+      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not create the submission package.");
     } finally {
       setRunBusy(false);
     }
@@ -595,14 +595,14 @@ export default function App() {
     if (!run || runBusy) return;
     setRunBusy(true);
     try {
-      const updatedPackage = await railAccessApi.recordOrganiserEvidence(run.run_id, packageId, payload);
+      const updatedPackage = await forRailsApi.recordOrganiserEvidence(run.run_id, packageId, payload);
       setRun((current) => current ? {
         ...current,
         submission_packages: current.submission_packages.map((item) => item.package_id === packageId ? updatedPackage : item)
       } : current);
       setRefreshNotice("Organiser metadata was recorded for this live run. Download the evidence JSON and keep it outside the repository.");
     } catch (error) {
-      setRefreshNotice(error instanceof RailAccessApiError ? error.message : "Could not record organiser metadata.");
+      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Could not record organiser metadata.");
     } finally {
       setRunBusy(false);
     }

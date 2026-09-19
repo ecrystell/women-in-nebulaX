@@ -1,13 +1,13 @@
 substitutions:
-  _RAILACCESS_BUILD_COMMIT: unknown
-  _IMAGE: us-central1-docker.pkg.dev/PROJECT/railaccess/railaccess-ai:unknown
+  _FOR_RAILS_BUILD_COMMIT: unknown
+  _IMAGE: us-central1-docker.pkg.dev/PROJECT/for-rails/for-rails:unknown
 
 steps:
   - name: gcr.io/cloud-builders/docker
     args:
       - build
       - --build-arg
-      - RAILACCESS_BUILD_COMMIT=${_RAILACCESS_BUILD_COMMIT}
+      - FOR_RAILS_BUILD_COMMIT=${_FOR_RAILS_BUILD_COMMIT}
       - -t
       - ${_IMAGE}
       - .

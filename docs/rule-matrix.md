@@ -1,4 +1,4 @@
-# RailAccess AI rule matrix
+# For Rails rule matrix
 
 **Status:** approved v0.1 — R4.2A local-evidence fixtures are complete where the published CSV contract contains enough evidence. Replace `TBD` items with organiser-validator evidence; local evidence is not organiser approval.
 **Rule owner:** Role 2. **Constraint implementation:** Role 3. **Integration/display:** Role 4 / Role 1.

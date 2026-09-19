@@ -1,4 +1,4 @@
-# RailAccess AI — Execution Plan
+# For Rails — Execution Plan
 
 ## Mission
 
@@ -338,7 +338,7 @@ This is the delivery checklist for the custom-validator, integration, and ground
 
 **Dependency:** a locally clean real schedule and the team's five-attempt upload budget.
 
-- Create packages only with a full `RAILACCESS_BUILD_COMMIT`; each contains scenario, run/schedule IDs, input/output checksums, local preflight report, and timestamp.
+- Create packages only with a full `FOR_RAILS_BUILD_COMMIT`; each contains scenario, run/schedule IDs, input/output checksums, local preflight report, and timestamp.
 - Keep ZIPs, evidence metadata, and downloaded JSON inside the live run's temporary workspace only. The playbook contains a public-fixture-only five-attempt template.
 - Record only structured website metadata (attempt, time, reported outcome, reference, digest, note). Do not upload screenshots, store raw reports, automate the website, or change validator truthfulness.
 

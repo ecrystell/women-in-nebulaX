@@ -51,8 +51,8 @@ class VertexDraftGenerator:
     @property
     def available(self) -> bool:
         return (
-            os.getenv("RAILACCESS_AI_ENABLED", "false").lower() == "true"
-            and bool(os.getenv("RAILACCESS_GCP_PROJECT", "").strip())
+            os.getenv("FOR_RAILS_AI_ENABLED", "false").lower() == "true"
+            and bool(os.getenv("FOR_RAILS_GCP_PROJECT", "").strip())
         )
 
     def generate(self, context: dict[str, object]) -> str:
@@ -72,12 +72,12 @@ class VertexDraftGenerator:
         try:
             client = genai.Client(
                 vertexai=True,
-                project=os.environ["RAILACCESS_GCP_PROJECT"].strip(),
-                location=os.getenv("RAILACCESS_VERTEX_LOCATION", "global").strip() or "global",
+                project=os.environ["FOR_RAILS_GCP_PROJECT"].strip(),
+                location=os.getenv("FOR_RAILS_VERTEX_LOCATION", "global").strip() or "global",
                 http_options=types.HttpOptions(api_version="v1"),
             )
             response = client.models.generate_content(
-                model=os.getenv("RAILACCESS_GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash",
+                model=os.getenv("FOR_RAILS_GEMINI_MODEL", "gemini-2.5-flash").strip() or "gemini-2.5-flash",
                 contents=json.dumps(context, separators=(",", ":")),
                 config=types.GenerateContentConfig(
                     system_instruction=instruction,

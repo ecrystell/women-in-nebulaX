@@ -1,5 +1,5 @@
 [project]
-name = "railaccess-ai"
+name = "for-rails"
 version = "0.1.0"
 description = "Validator-first railway track access decision support"
 requires-python = ">=3.12"
