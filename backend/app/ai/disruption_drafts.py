@@ -20,6 +20,7 @@ from app.api.schemas import (
     ScenarioChangeDraft,
     ScenarioChangeDraftStatus,
     ScenarioChangeDraftUpdate,
+    PlacementKey,
     RecoveryDraftSource,
     SupplyOverride,
 )
@@ -34,7 +35,11 @@ class _DraftOutput(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     supply_overrides: list[SupplyOverride] = Field(default_factory=list, max_length=12)
-    locked_placements: list[dict[str, object]] = Field(default_factory=list, max_length=24)
+    # Vertex structured output supports a concrete object schema.  An
+    # untyped ``dict[str, object]`` becomes an open-ended JSON object and can
+    # be rejected before Gemini is invoked, so keep this aligned with the
+    # API's existing, bounded placement-key contract.
+    locked_placements: list[PlacementKey] = Field(default_factory=list, max_length=24)
     rationale: str | None = Field(default=None, max_length=500)
     assumptions: list[str] = Field(default_factory=list, max_length=12)
     unresolved_references: list[str] = Field(default_factory=list, max_length=12)
