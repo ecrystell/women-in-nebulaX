@@ -119,7 +119,7 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
               </div>
             )}
             {notice && <p role="alert" className="mt-3 rounded-xl border border-rose-400/30 bg-rose-400/10 p-3 text-xs leading-5 text-rose-100">{notice}</p>}
-            {!answer && run?.schedule && !notice && (
+            {!answer && run?.schedule && !notice && !isPublicRecoveryDemo && (
               <div className="mt-4 rounded-xl border border-dashed border-slate-700 bg-slate-900/45 px-4 py-5 text-center text-sm leading-6 text-slate-400">
                 {mode === "activity_explanation"
                   ? "Choose an activity, then ask for a plain-language explanation."
