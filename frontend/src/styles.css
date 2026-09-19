@@ -59,47 +59,83 @@ body {
   isolation: isolate;
   overflow: hidden;
   min-height: 12rem;
-  padding: 1.35rem 1.3rem 2.55rem !important;
-  border: 0.3rem solid rgb(165 177 187 / 96%) !important;
-  border-bottom-width: 0.68rem !important;
-  border-bottom-color: rgb(84 98 110 / 98%) !important;
-  border-radius: 1.75rem 1.75rem 1.1rem 1.1rem;
-  background: #cdd5db !important;
+  padding: 1.35rem clamp(3rem, 9.5%, 5rem) 2.5rem !important;
+  border: 0.24rem solid #98a6b0 !important;
+  border-bottom-width: 0.5rem !important;
+  border-bottom-color: #586775 !important;
+  border-radius: 0.85rem 0.85rem 0.56rem 0.56rem;
+  background: #bcc6cd !important;
   box-shadow:
-    inset 0 0.16rem 0 rgb(255 255 255 / 88%),
-    inset 0 -0.12rem 0 rgb(71 85 105 / 65%),
-    0 1rem 2.2rem rgb(2 6 23 / 58%);
+    inset 0 0.1rem 0 rgb(255 255 255 / 55%),
+    inset 0 -0.12rem 0 rgb(51 65 85 / 62%),
+    0 0.9rem 2rem rgb(2 6 23 / 54%);
 }
 
 .c151-card::before {
   position: absolute;
-  inset: 0.34rem 0.34rem 0.82rem;
+  top: 0.38rem;
+  right: clamp(2.45rem, 8.7%, 4.65rem);
+  bottom: 1.08rem;
+  left: clamp(2.45rem, 8.7%, 4.65rem);
   z-index: 0;
-  border: 1px solid rgb(226 232 240 / 46%);
-  border-radius: 1.12rem 1.12rem 0.72rem 0.72rem;
+  border: 0.12rem solid #566474;
+  border-radius: 0.44rem;
   background: #0b1220;
   box-shadow:
-    inset 0 0.18rem 0.65rem rgb(226 232 240 / 16%),
-    inset 0 -0.9rem 1.2rem rgb(2 6 23 / 58%);
+    inset 0 0.1rem 0 rgb(226 232 240 / 13%),
+    inset 0 -0.75rem 1rem rgb(2 6 23 / 45%);
   content: "";
 }
 
 .c151-card::after {
   position: absolute;
-  right: 0.62rem;
-  bottom: 0.38rem;
-  left: 0.62rem;
+  right: 0.3rem;
+  bottom: 0.68rem;
+  left: 0.3rem;
   z-index: 0;
-  height: 0.46rem;
-  border-radius: 999px;
+  height: 0.28rem;
+  border-radius: 0;
   background: #df4b4d;
-  box-shadow: 0 0 0.72rem rgb(231 73 73 / 52%);
+  box-shadow: 0 0 0.45rem rgb(231 73 73 / 36%);
   content: "";
 }
 
 .c151-card > * {
   position: relative;
   z-index: 1;
+}
+
+.c151-carriage-shell {
+  position: absolute !important;
+  right: 0.78rem;
+  bottom: 0.1rem;
+  left: 0.78rem;
+  z-index: 0 !important;
+  height: 0.35rem;
+  border-radius: 0.12rem;
+  background: #17202d;
+  box-shadow: 0 0.22rem 0 #07101c;
+}
+
+.c151-carriage-shell::before,
+.c151-carriage-shell::after {
+  position: absolute;
+  top: -4.25rem;
+  bottom: 0.08rem;
+  width: 1.35rem;
+  border: 0.11rem solid #7b8994;
+  border-radius: 0.2rem;
+  background: #b7c1c8;
+  box-shadow: inset 0 0 0 0.26rem #202b38;
+  content: "";
+}
+
+.c151-carriage-shell::before {
+  left: -0.02rem;
+}
+
+.c151-carriage-shell::after {
+  right: -0.02rem;
 }
 
 .c151-card .section-heading,
