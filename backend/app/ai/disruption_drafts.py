@@ -13,7 +13,7 @@ import os
 from typing import Protocol
 from uuid import uuid4
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from app.api.schemas import (
     ApiFieldError,
@@ -154,6 +154,16 @@ class DisruptionDraftService:
             parsed = _DraftOutput.model_validate_json(self.generator.generate(context))
         except DisruptionDraftUnavailable:
             raise
+        except ValidationError as error:
+            # Keep the production diagnostic useful without retaining model output
+            # or controller content.  A path plus Pydantic error category is enough
+            # to distinguish malformed JSON from a contract mismatch.
+            problem_fields = [
+                {"path": ".".join(str(part) for part in item["loc"]), "type": item["type"]}
+                for item in error.errors(include_input=False)
+            ]
+            logger.warning("vertex_draft_invalid_schema error_fields=%s", problem_fields)
+            raise DisruptionDraftUnavailable("Vertex AI returned an invalid disruption draft.") from error
         except Exception as error:
             raise DisruptionDraftUnavailable("Vertex AI returned an invalid disruption draft.") from error
         prose = " ".join(
