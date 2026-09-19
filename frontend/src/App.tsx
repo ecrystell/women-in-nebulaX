@@ -105,7 +105,6 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <span aria-hidden="true" className="c151-carriage-shell" />
       <div className="flex items-start justify-between gap-4">
         <div>
           <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
@@ -180,7 +179,6 @@ function Calendar({
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <span aria-hidden="true" className="c151-carriage-shell" />
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
       <div className="mt-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
@@ -306,7 +304,6 @@ const publicScheduleFiles = [
 function PublicScheduleDownloads() {
   return (
     <section className="editorial-card c151-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <span aria-hidden="true" className="c151-carriage-shell" />
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
       <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
@@ -698,7 +695,6 @@ export default function App() {
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <span aria-hidden="true" className="c151-carriage-shell" />
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
@@ -718,7 +714,6 @@ export default function App() {
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <span aria-hidden="true" className="c151-carriage-shell" />
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Recovery</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
@@ -727,7 +722,6 @@ export default function App() {
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <span aria-hidden="true" className="c151-carriage-shell" />
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">06 · Optimise</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
