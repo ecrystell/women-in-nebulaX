@@ -65,6 +65,42 @@ const maintenanceEvents: MaintenanceEvent[] = [
   }
 ];
 
+// This is a presentation mapping only. The optimiser owns week/access-night
+// assignments; it does not assign real operating dates or times.
+const displayCalendarStart = new Date(Date.UTC(2027, 0, 4));
+const displayNightOffsets = [0, 2, 4] as const;
+
+function scheduleToCalendarEvents(run: RunView | null): MaintenanceEvent[] {
+  if (!run?.schedule?.placements.length) return [];
+
+  return run.schedule.placements
+    .map((placement) => {
+      const weekdayOffset = displayNightOffsets[(Math.max(placement.access_night, 1) - 1) % displayNightOffsets.length];
+      const date = new Date(Date.UTC(
+        displayCalendarStart.getUTCFullYear(),
+        displayCalendarStart.getUTCMonth(),
+        displayCalendarStart.getUTCDate() + (placement.week - 1) * 7 + weekdayOffset
+      ));
+      const location = placement.occupancies[0]?.location_id ?? "";
+      const station = location.match(/(?:S|H)\d{2}/)?.[0] ?? "Network";
+      const line = location.match(/:(ALP|BET):/)?.[1] ?? "Network";
+
+      return {
+        id: `${placement.activity_id}-${placement.access_seq}`,
+        day: date.getUTCDate(),
+        month: date.getUTCMonth(),
+        year: date.getUTCFullYear(),
+        title: `${placement.activity_id} · access ${placement.access_seq}`,
+        station,
+        line,
+        time: `Week ${placement.week} · access night ${placement.access_night}`,
+        people: "Display-only assignment from the optimiser output.",
+        colour: placement.eclo ? "bg-amber-400" : "bg-red-500"
+      } satisfies MaintenanceEvent;
+    })
+    .sort((left, right) => Date.UTC(left.year, left.month, left.day) - Date.UTC(right.year, right.month, right.day));
+}
+
 const stars = [
   ["3%", "28%", 1, "1.7s"], ["5%", "12%", 2, "0s"], ["7%", "77%", 2, "2.5s"],
   ["10%", "57%", 1, "0.8s"], ["12%", "42%", 3, "1.4s"], ["14%", "91%", 1, "2.2s"],
@@ -183,6 +219,8 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
 function Calendar({
   month,
   year,
+  events,
+  displayOnly,
   activeEvent,
   onMonthChange,
   onYearChange,
@@ -190,6 +228,8 @@ function Calendar({
 }: {
   month: number;
   year: number;
+  events: MaintenanceEvent[];
+  displayOnly: boolean;
   activeEvent: MaintenanceEvent | null;
   onMonthChange: (direction: number) => void;
   onYearChange: (direction: number) => void;
@@ -215,15 +255,15 @@ function Calendar({
     return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
   });
 
-  const eventForDay = (day: number) => maintenanceEvents.find(
+  const eventsForDay = (day: number) => events.filter(
     (event) => event.day === day && event.month === month && event.year === year
   );
-  const eventForDate = (date: Date) => maintenanceEvents.find(
+  const eventsForDate = (date: Date) => events.filter(
     (event) => event.day === date.getUTCDate()
       && event.month === date.getUTCMonth()
       && event.year === date.getUTCFullYear()
   );
-  const focusedEvents = maintenanceEvents.filter(
+  const focusedEvents = events.filter(
     (event) => event.day === selectedDay && event.month === month && event.year === year
   );
   const eventHandlers = (event: MaintenanceEvent) => ({
@@ -257,6 +297,7 @@ function Calendar({
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Maintenance calendar</p>
+      {displayOnly && <p className="mt-2 text-xs leading-5 text-amber-100">Display-only date mapping: Week 1 begins Mon 4 Jan 2027; access nights 1–3 map to Mon, Wed and Fri. This is not an operational daily timetable.</p>}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
@@ -302,17 +343,19 @@ function Calendar({
             <span key={`empty-${index}`} className="calendar-blank" aria-hidden="true" />
           ))}
           {calendarDays.map((day) => {
-            const event = eventForDay(day);
+            const dayEvents = eventsForDay(day);
+            const primaryEvent = dayEvents[0];
             return (
               <button
                 key={`date-${day}`}
-                aria-label={event ? `${day} ${months[month]}: ${event.title}` : `${day} ${months[month]}`}
+                aria-label={primaryEvent ? `${day} ${months[month]}: ${dayEvents.length} scheduled task${dayEvents.length === 1 ? "" : "s"}` : `${day} ${months[month]}`}
                 className={`calendar-day calendar-event-date ${day === selectedDay ? "bg-slate-800/70 ring-1 ring-slate-600" : ""}`}
                 onClick={() => setFocusedDay(day)}
-                {...(event ? eventHandlers(event) : {})}
+                {...(primaryEvent ? eventHandlers(primaryEvent) : {})}
               >
                 <span className="font-bold">{day}</span>
-                {event && <span className={`calendar-event ${event.colour}`} aria-hidden="true" />}
+                {primaryEvent && <span className={`calendar-event ${primaryEvent.colour}`} aria-hidden="true" />}
+                {dayEvents.length > 1 && <span className="text-[9px] font-bold text-red-200">{dayEvents.length}</span>}
               </button>
             );
           })}
@@ -322,25 +365,42 @@ function Calendar({
       {view === "week" && (
         <div className="mt-5 grid grid-cols-7 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70 text-center">
           {weekDates.map((date) => {
-            const event = eventForDate(date);
+            const dateEvents = eventsForDate(date);
             const isFocused = date.getUTCFullYear() === year && date.getUTCMonth() === month && date.getUTCDate() === selectedDay;
             return (
               <div key={date.toISOString()} className={`min-h-32 border-r border-slate-800 px-1 py-2 last:border-r-0 ${isFocused ? "bg-slate-800/70" : ""}`}>
                 <p className="text-[10px] font-bold uppercase text-slate-500">{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"][date.getUTCDay()]}</p>
                 <p className="mt-1 text-sm font-bold text-white">{date.getUTCDate()}</p>
-                {event && (
-                  <button {...eventHandlers(event)} onClick={() => selectDate(date)} className={`mt-3 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
+                {dateEvents.map((event) => (
+                  <button key={event.id} {...eventHandlers(event)} onClick={() => selectDate(date)} className={`mt-2 w-full rounded-md ${event.colour} px-1 py-2 text-left text-[10px] font-bold leading-tight text-white shadow-sm`}>
                     <span className="block opacity-80">{event.time}</span>
                     <span className="mt-1 block">{event.title}</span>
                   </button>
-                )}
+                ))}
               </div>
             );
           })}
         </div>
       )}
 
-      {view === "day" && (
+      {view === "day" && displayOnly && (
+        <div className="mt-5 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70">
+          <div className="border-b border-slate-700 px-3 py-2 text-sm font-bold text-white">
+            {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][focusedDate.getUTCDay()]}, {months[month]} {selectedDay}
+          </div>
+          <div className="space-y-2 p-3">
+            {focusedEvents.map((event) => (
+              <button key={event.id} {...eventHandlers(event)} className={`w-full rounded-lg ${event.colour} px-3 py-2 text-left text-sm font-bold text-white shadow-sm`}>
+                <span className="block">{event.title}</span>
+                <span className="mt-1 block text-xs font-medium opacity-90">{event.time} · {event.station} · {event.line}</span>
+              </button>
+            ))}
+            {!focusedEvents.length && <p className="px-1 py-4 text-sm text-slate-500">No optimiser assignments mapped to this date.</p>}
+          </div>
+        </div>
+      )}
+
+      {view === "day" && !displayOnly && (
         <div className="mt-5 overflow-hidden rounded-xl border border-slate-700 bg-slate-950/70">
           <div className="border-b border-slate-700 px-3 py-2 text-sm font-bold text-white">
             {["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"][focusedDate.getUTCDay()]}, {months[month]} {selectedDay}
@@ -589,6 +649,15 @@ export default function App() {
   const validatorStatus = health?.validator_status ?? "checking";
   const demandBookReady = demandFiles.length === 8;
   const scheduleInputReady = demandBookReady;
+  const optimiserCalendarEvents = scheduleToCalendarEvents(run);
+  const calendarEvents = optimiserCalendarEvents.length ? optimiserCalendarEvents : maintenanceEvents;
+  const focusCalendarOnSchedule = (completedRun: RunView) => {
+    const firstAssignment = scheduleToCalendarEvents(completedRun)[0];
+    if (!firstAssignment) return;
+    setMonth(firstAssignment.month);
+    setYear(firstAssignment.year);
+    setActiveEvent(null);
+  };
   const changeMonth = (direction: number) => {
     const nextDate = new Date(Date.UTC(year, month + direction, 1));
     setMonth(nextDate.getUTCMonth());
@@ -615,6 +684,7 @@ export default function App() {
         : "";
       setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.${solverEvidence}`);
       setDemandFiles([]);
+      focusCalendarOnSchedule(current);
       setPage("overview");
     } catch (error) {
       const detail = error instanceof ForRailsApiError ? error.message : "The run could not be started.";
@@ -630,6 +700,7 @@ export default function App() {
     try {
       const demo = await forRailsApi.createPublicDemoRun();
       setRun(demo);
+      focusCalendarOnSchedule(demo);
       setRefreshNotice("Public recovery demonstration loaded. It is unverified and cannot be exported or submitted.");
       setPage("overview");
     } catch (error) {
@@ -681,6 +752,7 @@ export default function App() {
         ? ` CP-SAT ${diagnostics.status} in ${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s.`
         : "";
       setRefreshNotice(`Scenario C recovery is ${current.status}.${evidence}`);
+      focusCalendarOnSchedule(current);
     } catch (error) {
       setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Recovery could not be started.");
     } finally {
@@ -724,6 +796,8 @@ export default function App() {
               <Calendar
                 month={month}
                 year={year}
+                events={calendarEvents}
+                displayOnly={optimiserCalendarEvents.length > 0}
                 activeEvent={activeEvent}
                 onMonthChange={changeMonth}
                 onYearChange={(direction) => setYear((current) => current + direction)}
