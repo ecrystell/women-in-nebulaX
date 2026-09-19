@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import hashlib
+import io
 import os
 import tempfile
 from datetime import datetime, timezone
@@ -11,6 +13,7 @@ from uuid import uuid4
 
 from fastapi import APIRouter, BackgroundTasks, File, Form, Request, Response, UploadFile
 from fastapi.responses import FileResponse
+from pydantic import ValidationError
 
 from app.api.errors import ApiException
 from app.ai.gemini import CopilotService, CopilotUnavailable
@@ -37,9 +40,10 @@ from app.api.schemas import (
     ScenarioChange,
     ScenarioChangeDraft,
     ScenarioChangeDraftRequest,
+    ScenarioChangeDraftUpdate,
     SubmissionPackageSummary,
 )
-from app.domain.models import Scenario
+from app.domain.models import LocationSupplyRecord, Scenario
 from app.ingestion.csv_loader import INPUT_TABLES, InstanceLoadError, load_instance
 
 router = APIRouter(prefix="/api/v1", tags=["v1"])
@@ -47,6 +51,7 @@ ALLOWED_EXPORTS = frozenset({"SCHEDULE_ACCESS.csv", "SCHEDULE_OCCUPANCY.csv", "R
 NO_STORE_HEADERS = {"Cache-Control": "no-store"}
 MAX_FILE_BYTES = 10 * 1024 * 1024
 MAX_PACKAGE_BYTES = 40 * 1024 * 1024
+SUPPLY_HEADERS = ["location_id", "location_kind", "line_code", "bound", "supply_capacity"]
 PUBLIC_SCHEDULE_DIR = PUBLIC_SUBMISSION_DIR
 
 
@@ -156,6 +161,65 @@ async def parse_uploaded_instance(files: list[UploadFile]) -> InputInstance:
             file_checksums=file_checksums,
         ),
     )
+
+
+async def parse_replacement_supply(record: RunRecord, upload: UploadFile) -> list[object]:
+    """Read one official supply table and convert capacity deltas to all-week overrides."""
+    filename = upload.filename or ""
+    if filename != "04_LOCATION_SUPPLY.csv":
+        raise ApiException(422, "invalid_recovery_supply_csv", "Upload the official 04_LOCATION_SUPPLY.csv filename.")
+    contents = await upload.read()
+    if not contents or len(contents) > MAX_FILE_BYTES:
+        raise ApiException(413, "recovery_supply_too_large", "The replacement supply CSV must be between 1 byte and 10 MiB.")
+    try:
+        reader = csv.DictReader(io.StringIO(contents.decode("utf-8-sig"), newline=""))
+    except UnicodeDecodeError as error:
+        raise ApiException(422, "invalid_recovery_supply_csv", "The replacement supply CSV must be UTF-8.") from error
+    if reader.fieldnames != SUPPLY_HEADERS:
+        raise ApiException(
+            422,
+            "invalid_recovery_supply_csv",
+            "04_LOCATION_SUPPLY.csv must use the exact official headers and order.",
+            [ApiFieldError(field="headers", message=", ".join(SUPPLY_HEADERS))],
+        )
+    received: dict[str, LocationSupplyRecord] = {}
+    errors: list[ApiFieldError] = []
+    for row_number, row in enumerate(reader, start=2):
+        try:
+            item = LocationSupplyRecord.model_validate(row)
+        except ValidationError as error:
+            errors.append(ApiFieldError(field=f"row.{row_number}", message=error.errors()[0]["msg"]))
+            continue
+        if item.location_id in received:
+            errors.append(ApiFieldError(field=f"row.{row_number}.location_id", message="duplicate location_id"))
+        received[item.location_id] = item
+    baseline = {item.location_id: item for item in record.input_instance.location_supply}
+    for location_id in sorted(set(received) - set(baseline)):
+        errors.append(ApiFieldError(field="location_id", message=f"unexpected location_id: {location_id}"))
+    for location_id in sorted(set(baseline) - set(received)):
+        errors.append(ApiFieldError(field="location_id", message=f"missing location_id: {location_id}"))
+    changed: list[tuple[str, int]] = []
+    for location_id, original in baseline.items():
+        replacement = received.get(location_id)
+        if replacement is None:
+            continue
+        if replacement.location_kind != original.location_kind or replacement.line_code != original.line_code or replacement.bound != original.bound:
+            errors.append(ApiFieldError(field=f"location_id.{location_id}", message="location metadata must match the base input"))
+        elif replacement.supply_capacity != original.supply_capacity:
+            changed.append((location_id, replacement.supply_capacity))
+    if errors:
+        raise ApiException(422, "invalid_recovery_supply_csv", "The replacement supply CSV differs from the base input outside capacity values.", errors)
+    if not changed:
+        raise ApiException(422, "recovery_supply_no_changes", "The replacement supply CSV has no capacity changes to review.")
+    if record.prepared_instance is None:
+        raise ApiException(409, "recovery_unavailable", "Recovery requires a prepared base instance.")
+    from app.api.schemas import SupplyOverride
+
+    return [
+        SupplyOverride(location_id=location_id, week=week, supply_capacity=capacity)
+        for location_id, capacity in sorted(changed)
+        for week in range(1, record.prepared_instance.calendar.horizon_weeks + 1)
+    ]
 
 
 @router.get("/health")
@@ -386,6 +450,40 @@ def create_disruption_draft(
         raise ApiException(503, "disruption_parser_unavailable", str(error)) from error
 
 
+@router.post("/runs/{run_id}/recovery-drafts/supply-csv", response_model=ScenarioChangeDraft)
+async def create_supply_csv_draft(
+    request: Request, run_id: str, file: UploadFile = File(...)
+) -> ScenarioChangeDraft:
+    """Compare a replacement official supply file with a completed base run."""
+    record = _authorize(request, run_id)
+    if record.status.value != "succeeded" or record.schedule is None:
+        raise ApiException(409, "recovery_unavailable", "Recovery review requires a run with a candidate schedule.")
+    overrides = await parse_replacement_supply(record, file)
+    try:
+        draft = get_draft_service(request).create_supply_csv(record, overrides)
+    except DisruptionDraftUnavailable as error:
+        raise ApiException(409, "recovery_unavailable", str(error)) from error
+    record.disruption_drafts[draft.draft_id] = draft
+    record.updated_at = datetime.now(timezone.utc)
+    return draft
+
+
+@router.patch("/runs/{run_id}/recovery-drafts/{draft_id}", response_model=ScenarioChangeDraft)
+def update_recovery_draft(
+    request: Request, run_id: str, draft_id: str, payload: ScenarioChangeDraftUpdate
+) -> ScenarioChangeDraft:
+    record = _authorize(request, run_id)
+    draft = record.disruption_drafts.get(draft_id)
+    if draft is None:
+        raise ApiException(404, "recovery_draft_not_found", "No recovery draft exists for this run.")
+    if record.schedule is None:
+        raise ApiException(409, "recovery_unavailable", "Recovery review requires a run with a candidate schedule.")
+    updated = get_draft_service(request).update(record, draft, payload)
+    record.disruption_drafts[updated.draft_id] = updated
+    record.updated_at = datetime.now(timezone.utc)
+    return updated
+
+
 @router.post("/runs/{run_id}/demo-recovery", response_model=RunView, status_code=201)
 def create_public_demo_replay(
     request: Request,
@@ -458,3 +556,23 @@ def create_recovery(
     _set_run_cookie(response, record, service)
     response.headers.update(NO_STORE_HEADERS)
     return record.to_view()
+
+
+@router.post("/runs/{run_id}/recovery-drafts/{draft_id}/confirm", response_model=RunView, status_code=202)
+def confirm_recovery_draft(
+    request: Request,
+    run_id: str,
+    draft_id: str,
+    background_tasks: BackgroundTasks,
+    response: Response,
+) -> RunView:
+    record = _authorize(request, run_id)
+    draft = record.disruption_drafts.get(draft_id)
+    if draft is None:
+        raise ApiException(404, "recovery_draft_not_found", "No recovery draft exists for this run.")
+    if draft.status.value != "ready":
+        raise ApiException(422, "recovery_draft_not_ready", "Resolve the recovery draft before confirmation.")
+    change = draft.change.model_copy(
+        update={"confirmed_at": datetime.now(timezone.utc), "requested_by": "controller"}
+    )
+    return create_recovery(request, run_id, change, background_tasks, response)

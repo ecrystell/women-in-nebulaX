@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { forRailsApi, ForRailsApiError } from "./api/client";
-import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft } from "./api/types";
+import type { CapabilityReport, Health, OrganiserEvidenceInput, OrganiserReportedOutcome, RunView, Scenario, ScenarioChangeDraft, ScenarioChangeDraftUpdate } from "./api/types";
 import { TrainScene } from "./TrainScene";
 import { GroundedCopilot } from "./GroundedCopilot";
 import { RecoverySandbox } from "./RecoverySandbox";
@@ -577,6 +577,28 @@ export default function App() {
     return forRailsApi.createDisruptionDraft(run.run_id, text);
   };
 
+  const createSupplyCsvDraft = async (file: File): Promise<ScenarioChangeDraft> => {
+    if (!run) throw new Error("Run a schedule before reviewing replacement supply data.");
+    return forRailsApi.createSupplyCsvDraft(run.run_id, file);
+  };
+
+  const updateRecoveryDraft = async (draftId: string, payload: ScenarioChangeDraftUpdate): Promise<ScenarioChangeDraft> => {
+    if (!run) throw new Error("Run a schedule before editing a recovery draft.");
+    return forRailsApi.updateRecoveryDraft(run.run_id, draftId, payload);
+  };
+
+  const confirmRecoveryDraft = async (draftId: string) => {
+    if (!run || runBusy) return;
+    setRunBusy(true);
+    try {
+      setRun(await forRailsApi.confirmRecoveryDraft(run.run_id, draftId));
+    } catch (error) {
+      setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Recovery could not be started.");
+    } finally {
+      setRunBusy(false);
+    }
+  };
+
   const createSubmissionPackage = async () => {
     if (!run || runBusy) return;
     setRunBusy(true);
@@ -665,6 +687,9 @@ export default function App() {
               onOpenDemo={openPublicDemo}
               onReplay={replayPublicDemo}
               onCreateDraft={createDisruptionDraft}
+              onCreateSupplyDraft={createSupplyCsvDraft}
+              onUpdateDraft={updateRecoveryDraft}
+              onConfirmDraft={confirmRecoveryDraft}
             />
           </>
         ) : (

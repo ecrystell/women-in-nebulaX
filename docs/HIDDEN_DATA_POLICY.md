@@ -31,6 +31,11 @@ exporter, submission workflow, recovery endpoint, or `ScenarioChange` code.
 Every answer contains its exact evidence envelope and a service-generated
 notice that organiser verification remains unavailable or unverified.
 
+Natural-language recovery parsing is limited to the committed public demo
+fixture. Uploaded runs may use a replacement `04_LOCATION_SUPPLY.csv` and a
+manual review only; their disruption text and supply data are never sent to
+Gemini.
+
 ## Cloud controls
 
 Cloud Run uses a dedicated `for-rails-runtime` service account with only the

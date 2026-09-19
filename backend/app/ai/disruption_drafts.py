@@ -19,6 +19,8 @@ from app.api.schemas import (
     ScenarioChange,
     ScenarioChangeDraft,
     ScenarioChangeDraftStatus,
+    ScenarioChangeDraftUpdate,
+    RecoveryDraftSource,
     SupplyOverride,
 )
 from app.api.run_service import RunRecord
@@ -138,7 +140,7 @@ class DisruptionDraftService:
         if any(phrase in prose for phrase in ("feasible", "infeasible", "validated", "optimised", "optimized")):
             raise DisruptionDraftUnavailable("Vertex AI returned an unsafe disruption draft.")
 
-        errors = self._validate(record, parsed)
+        errors = self._validate(record, parsed.supply_overrides, parsed.locked_placements)
         unresolved = list(dict.fromkeys(parsed.unresolved_references))
         if not parsed.supply_overrides and not parsed.locked_placements and not unresolved:
             unresolved.append("No supply override or scheduled placement lock was resolved from the request.")
@@ -155,6 +157,7 @@ class DisruptionDraftService:
         return ScenarioChangeDraft(
             draft_id=str(uuid4()),
             change=change,
+            source=RecoveryDraftSource.NATURAL_LANGUAGE,
             assumptions=list(dict.fromkeys(parsed.assumptions)),
             unresolved_references=unresolved,
             field_errors=errors,
@@ -165,13 +168,77 @@ class DisruptionDraftService:
             ),
         )
 
+    def create_supply_csv(self, record: RunRecord, overrides: list[SupplyOverride]) -> ScenarioChangeDraft:
+        """Create an all-week draft from a verified replacement supply table."""
+        if record.schedule is None or record.prepared_instance is None:
+            raise DisruptionDraftUnavailable("A completed base schedule is required before reviewing supply changes.")
+        return self._draft(
+            record,
+            supply_overrides=overrides,
+            locked_placements=[],
+            rationale="Capacity changes imported from a replacement 04_LOCATION_SUPPLY.csv.",
+            source=RecoveryDraftSource.SUPPLY_CSV,
+        )
+
+    def update(self, record: RunRecord, draft: ScenarioChangeDraft, update: ScenarioChangeDraftUpdate) -> ScenarioChangeDraft:
+        """Apply controller review edits and recompute deterministic draft validity."""
+        return self._draft(
+            record,
+            supply_overrides=update.supply_overrides,
+            locked_placements=update.locked_placements,
+            rationale=update.rationale,
+            source=RecoveryDraftSource.MANUAL_REVIEW,
+            assumptions=draft.assumptions,
+        )
+
+    def _draft(
+        self,
+        record: RunRecord,
+        *,
+        supply_overrides: list[SupplyOverride],
+        locked_placements: list[object],
+        rationale: str | None,
+        source: RecoveryDraftSource,
+        assumptions: list[str] | None = None,
+    ) -> ScenarioChangeDraft:
+        assert record.schedule is not None
+        errors = self._validate(record, supply_overrides, locked_placements)
+        typed_locks = []
+        for item in locked_placements:
+            try:
+                typed_locks.append(item if hasattr(item, "activity_id") else {"activity_id": item["activity_id"], "access_seq": item["access_seq"]})
+            except (KeyError, TypeError):
+                continue
+        change = ScenarioChange(
+            change_id=str(uuid4()),
+            base_schedule_id=record.schedule.schedule_id,
+            scenario=record.scenario,
+            supply_overrides=supply_overrides,
+            locked_placements=typed_locks,
+            requested_by="controller-review",
+            confirmed_at=None,
+            rationale=rationale,
+        )
+        unresolved = [] if supply_overrides or typed_locks else ["Select a supply change or lock at least one scheduled placement."]
+        return ScenarioChangeDraft(
+            draft_id=str(uuid4()),
+            change=change,
+            source=source,
+            assumptions=assumptions or [],
+            unresolved_references=unresolved,
+            field_errors=errors,
+            status=ScenarioChangeDraftStatus.READY if not errors and not unresolved else ScenarioChangeDraftStatus.NEEDS_REVIEW,
+        )
+
     @staticmethod
-    def _validate(record: RunRecord, parsed: _DraftOutput) -> list[ApiFieldError]:
+    def _validate(
+        record: RunRecord, supply_overrides: list[SupplyOverride], locked_placements: list[object]
+    ) -> list[ApiFieldError]:
         assert record.schedule is not None and record.prepared_instance is not None
         errors: list[ApiFieldError] = []
         seen_overrides: set[tuple[str, int]] = set()
         horizon = record.prepared_instance.calendar.horizon_weeks
-        for index, override in enumerate(parsed.supply_overrides):
+        for index, override in enumerate(supply_overrides):
             key = (override.location_id, override.week)
             field = f"supply_overrides.{index}"
             if override.location_id not in record.prepared_instance.supply:
@@ -184,11 +251,15 @@ class DisruptionDraftService:
 
         valid_locks = {(item.activity_id, item.access_seq) for item in record.schedule.placements}
         seen_locks: set[tuple[str, int]] = set()
-        for index, raw_lock in enumerate(parsed.locked_placements):
+        for index, raw_lock in enumerate(locked_placements):
             try:
-                activity_id = str(raw_lock["activity_id"])
-                access_seq = int(raw_lock["access_seq"])
-            except (KeyError, TypeError, ValueError):
+                if hasattr(raw_lock, "activity_id"):
+                    activity_id = str(raw_lock.activity_id)
+                    access_seq = int(raw_lock.access_seq)
+                else:
+                    activity_id = str(raw_lock["activity_id"])
+                    access_seq = int(raw_lock["access_seq"])
+            except (KeyError, TypeError, ValueError, AttributeError):
                 errors.append(ApiFieldError(field=f"locked_placements.{index}", message="invalid placement key"))
                 continue
             key = (activity_id, access_seq)

@@ -93,11 +93,18 @@ export type ScenarioChange = {
 export type ScenarioChangeDraft = {
   draft_id: string;
   change: ScenarioChange;
+  source: "supply_csv" | "natural_language" | "manual_review";
   assumptions: string[];
   unresolved_references: string[];
   field_errors: Array<{ field: string; message: string }>;
   evidence_version: "1";
   status: "ready" | "needs_review";
+};
+
+export type ScenarioChangeDraftUpdate = {
+  supply_overrides: ScenarioChange["supply_overrides"];
+  locked_placements: PlacementKey[];
+  rationale?: string | null;
 };
 
 export type OrganiserEvidenceInput = {
