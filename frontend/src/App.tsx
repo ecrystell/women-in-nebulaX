@@ -354,24 +354,19 @@ function SubmissionEvidencePanel({
   if (!run) return null;
 
   return (
-    <section className="mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 · Organiser evidence</p>
-      <h2 className="mt-1 text-xl font-bold text-white">Manual submission package</h2>
-      <p className="mt-2 text-sm leading-6 text-slate-400">
-        Run {run.run_id.slice(0, 8)} · {run.status}. Local result: {run.validation_report?.status ?? "unavailable"}.
-      </p>
-      {run.validation_report && (
-        <p className="mt-2 text-xs leading-5 text-amber-100">
-          {run.validation_report.message} Organiser feedback recorded here remains unverified until a supported organiser report integration exists.
-        </p>
-      )}
-      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100">Public demonstration runs cannot create submission packages, exports, or organiser evidence.</p>}
+    <section className="editorial-card c151-card mt-5 rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">07 - Organiser check</p>
+      <h2 className="section-heading mt-1 text-xl font-bold text-white">Submission evidence</h2>
+      <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-400">This is the final handoff before an organiser submission. Our local checker can flag known problems, but only the organiser website decides whether a schedule is feasible.</p>
+      <div className="mt-4 flex flex-wrap gap-2 text-xs font-bold"><span className={`rounded-full border px-3 py-1.5 ${run.status === "succeeded" && run.validation_report?.hard_violations.length === 0 ? "border-emerald-300/35 bg-emerald-300/10 text-emerald-100" : "border-slate-600 bg-slate-900 text-slate-300"}`}>Local checklist: {run.status === "succeeded" && run.validation_report?.hard_violations.length === 0 ? "clear" : "not ready"}</span><span className="rounded-full border border-amber-300/35 bg-amber-300/10 px-3 py-1.5 text-amber-100">Organiser decision: not checked</span><span className="rounded-full border border-slate-700 bg-slate-900 px-3 py-1.5 text-slate-300">Run {run.run_id.slice(0, 8)}</span></div>
+      {run.validation_report && <p className="mt-3 rounded-xl border border-amber-300/25 bg-amber-300/5 p-3 text-xs leading-5 text-amber-100">{run.validation_report.message} A locally clean result is still <b>unverified</b> until the three CSVs are uploaded to the organiser validator.</p>}
+      {run.demo && <p className="mt-3 rounded-xl border border-amber-300/30 bg-amber-300/10 p-3 text-sm text-amber-100"><b>Public demo only.</b> It illustrates the workflow and cannot create a submission ZIP, exports, or organiser evidence.</p>}
       {run.problem && <p className="mt-2 text-sm text-rose-200">{run.problem.message}</p>}
       {notice && <p className="mt-3 text-sm text-red-100">{notice}</p>}
 
       {!localClean ? (
         <p className="mt-4 rounded-xl border border-slate-700 bg-slate-900/70 p-3 text-sm text-slate-400">
-          Submission packages are available only after a locally clean succeeded run. Blocked Scenario B/C runs and failed candidates cannot be downloaded for submission.
+          No upload ZIP is available yet. A real Scenario A run that finishes cleanly unlocks the three official CSVs in one package. Blocked Scenario B/C runs, failed runs, and public demos stay unavailable.
         </p>
       ) : (
         <div className="mt-4 space-y-4">
