@@ -19,6 +19,7 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
   const [notice, setNotice] = useState("");
   const activityIds = Array.from(new Set(run?.schedule?.placements.map((placement) => placement.activity_id) ?? [])).sort();
   const busy = requestingMode !== null;
+  const isPublicRecoveryDemo = run?.demo === true;
   const answer = mode === "activity_explanation"
     ? answers.activity_explanation[activityId]
     : answers[mode];
@@ -80,6 +81,11 @@ export function GroundedCopilot({ run }: { run: RunView | null }) {
             <p className="text-sm leading-6 text-slate-300">Choose a concise, read-only explanation. The copilot cannot change the schedule or establish feasibility.</p>
             {!run?.schedule ? (
               <p className="mt-4 rounded-xl border border-slate-800 bg-slate-900/70 p-3 text-xs leading-5 text-slate-400">Run a schedule first to make its evidence available.</p>
+            ) : isPublicRecoveryDemo ? (
+              <div className="mt-4 rounded-xl border border-amber-300/35 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50">
+                <p className="font-bold">Copilot unavailable for the disruption demo</p>
+                <p className="mt-1 text-xs leading-5 text-amber-100/85">This demo does not have a complete controller-uploaded set of all eight CSV files. Activity explanations, capacity hotspots, and handover briefs are available only after a full schedule run.</p>
+              </div>
             ) : (
               <div className="mt-4 space-y-4">
                 <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-800 bg-slate-900/70 p-1" role="tablist" aria-label="Copilot request type">

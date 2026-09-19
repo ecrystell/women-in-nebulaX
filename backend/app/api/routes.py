@@ -414,13 +414,14 @@ def get_handover_evidence(request: Request, run_id: str) -> EvidenceEnvelope:
 def create_copilot_response(request: Request, run_id: str, payload: CopilotRequest) -> CopilotResponse:
     record = _authorize(request, run_id)
     service = get_service(request)
+    try:
+        evidence = service.evidence_for(record, payload.mode, payload.activity_id)
+    except EvidenceUnavailable as error:
+        raise _evidence_exception(error) from error
     if not service.consume_copilot_request(record):
         raise ApiException(503, "copilot_unavailable", "Try the copilot again in a minute.")
     try:
-        evidence = service.evidence_for(record, payload.mode, payload.activity_id)
         return get_copilot(request).respond(evidence, payload.mode)
-    except EvidenceUnavailable as error:
-        raise _evidence_exception(error) from error
     except CopilotUnavailable as error:
         raise ApiException(503, "copilot_unavailable", str(error)) from error
 

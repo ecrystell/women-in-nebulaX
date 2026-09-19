@@ -179,6 +179,29 @@ def test_copilot_binds_an_answer_only_provider_response_to_server_evidence() -> 
     assert response.json()["evidence"]["schedule_id"]
 
 
+def test_public_disruption_demo_never_calls_vertex_for_copilot_briefs() -> None:
+    _, generator = set_services()
+    client = TestClient(app)
+    demo = client.post("/api/v1/demo-runs")
+    assert demo.status_code == 201, demo.text
+    run_id = demo.json()["run_id"]
+
+    response = client.post(
+        f"/api/v1/runs/{run_id}/copilot-responses",
+        json={"mode": "capacity_hotspots"},
+    )
+    assert response.status_code == 409
+    body = response.json()["error"]
+    assert body["code"] == "evidence_unavailable"
+    assert "all eight CSV files" in body["message"]
+    assert "Vertex" not in body["message"]
+    assert generator.payloads == []
+
+    evidence = client.get(f"/api/v1/runs/{run_id}/evidence/handover")
+    assert evidence.status_code == 409
+    assert "all eight CSV files" in evidence.json()["error"]["message"]
+
+
 def test_copilot_route_requires_schedule_cookie_and_expires(monkeypatch) -> None:
     service, _ = set_services()
     owner = TestClient(app)

@@ -61,6 +61,10 @@ def _public_data_root() -> Path:
 PUBLIC_INSTANCE_DIR = _public_data_root() / "public-instance"
 PUBLIC_SUBMISSION_DIR = PUBLIC_INSTANCE_DIR / "sample-submission"
 DEMO_NOTICE = "Public demonstration fixture \u2014 not a newly optimised schedule."
+PUBLIC_DEMO_COPILOT_MESSAGE = (
+    "This disruption demo does not have a complete controller-uploaded set of all eight CSV files. "
+    "Activity explanations, capacity hotspots, and handover briefs are unavailable."
+)
 
 
 def utc_now() -> datetime:
@@ -562,6 +566,11 @@ class RunService:
         return record.to_view() if record else None
 
     def evidence_for(self, record: RunRecord, mode: CopilotMode, activity_id: str | None = None) -> EvidenceEnvelope:
+        # A public recovery replay is deliberately a narrow controller demo,
+        # not a replacement for a completed eight-file upload. Do not send its
+        # replay state to Vertex, even though its internal fixture is public.
+        if record.demo:
+            raise EvidenceUnavailable(PUBLIC_DEMO_COPILOT_MESSAGE)
         if record.schedule is None or record.validation_report is None or record.prepared_instance is None:
             raise EvidenceUnavailable("Evidence requires a candidate schedule and shared preprocessing facts.")
         common = {
