@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi.testclient import TestClient
 
-from app.ai.disruption_drafts import DisruptionDraftService
+from app.ai.disruption_drafts import DisruptionDraftService, VertexDraftGenerator
 from app.api.run_service import RunService
 from app.main import app
 from app.solver.adapter import CpSatSolverAdapter
@@ -25,6 +25,25 @@ class StubDraftGenerator:
     def generate(self, context: dict[str, object]) -> str:
         self.context = context
         return self.payload if isinstance(self.payload, str) else json.dumps(self.payload)
+
+
+def test_vertex_json_extraction_ignores_thoughts_and_markdown_fences() -> None:
+    class Part:
+        def __init__(self, text: str, *, thought: bool = False) -> None:
+            self.text = text
+            self.thought = thought
+
+    class Candidate:
+        class Content:
+            parts = [Part("internal reasoning", thought=True), Part("```json\n{\"supply_overrides\":[]}\n```")]
+
+        content = Content()
+
+    class Response:
+        candidates = [Candidate()]
+        text = "not the final JSON boundary"
+
+    assert VertexDraftGenerator._final_json_text(Response()) == '{"supply_overrides":[]}'
 
 
 def set_services(generator: StubDraftGenerator) -> None:

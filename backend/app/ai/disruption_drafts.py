@@ -66,6 +66,31 @@ class VertexDraftGenerator:
             and bool(os.getenv("FOR_RAILS_GCP_PROJECT", "").strip())
         )
 
+    @staticmethod
+    def _final_json_text(response: object) -> str:
+        """Extract only Gemini's final, non-thinking text part.
+
+        Gemini 2.5 can emit an internal thought part ahead of the final answer.
+        ``response.text`` is convenient for prose, but is not a reliable JSON
+        boundary in that case.  This path deliberately selects the final
+        non-thought part and accepts an incidental Markdown fence only after
+        the model has been instructed to return JSON.
+        """
+        text_parts: list[str] = []
+        for candidate in getattr(response, "candidates", None) or []:
+            content = getattr(candidate, "content", None)
+            for part in getattr(content, "parts", None) or []:
+                text = getattr(part, "text", None)
+                if isinstance(text, str) and text.strip() and not getattr(part, "thought", False):
+                    text_parts.append(text)
+        raw = text_parts[-1] if text_parts else (getattr(response, "text", None) or "")
+        value = raw.strip()
+        if value.startswith("```"):
+            lines = value.splitlines()
+            if len(lines) >= 2 and lines[-1].strip().startswith("```"):
+                value = "\n".join(lines[1:-1]).strip()
+        return value
+
     def generate(self, context: dict[str, object]) -> str:
         if not self.available:
             raise DisruptionDraftUnavailable("The draft parser is not enabled for this service.")
@@ -99,6 +124,7 @@ class VertexDraftGenerator:
                     temperature=0,
                     max_output_tokens=700,
                     response_mime_type="application/json",
+                    thinking_config=types.ThinkingConfig(thinking_budget=0),
                     # The Vertex endpoint accepts the model and JSON MIME type, but its
                     # structured-output schema subset can reject a nested draft model
                     # before generation.  Pydantic below remains the authoritative,
@@ -112,7 +138,7 @@ class VertexDraftGenerator:
                 return json.dumps(parsed, separators=(",", ":"))
             if isinstance(parsed, str):
                 return parsed
-            return response.text or ""
+            return self._final_json_text(response)
         except Exception as error:
             # Log only operational metadata. Prompts, reference data and any
             # model response must never enter application logs.
