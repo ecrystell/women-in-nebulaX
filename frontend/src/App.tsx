@@ -783,19 +783,16 @@ export default function App() {
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                {(["A", "B", "C"] as Scenario[]).map((option) => {
-                  const available = capabilities?.scenarios.find((item) => item.scenario === option)?.available ?? false;
-                  return (
+                {(["A", "B", "C"] as Scenario[]).map((option) => (
                   <button
                     key={option}
-                    disabled={runBusy || !available}
+                    disabled={runBusy}
                     onClick={() => setScenario(option)}
                     className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                   >
                     {option}
                   </button>
-                  );
-                })}
+                ))}
               </div>
               <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
               <button
