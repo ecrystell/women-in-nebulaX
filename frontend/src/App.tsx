@@ -66,11 +66,38 @@ const maintenanceEvents: MaintenanceEvent[] = [
 ];
 
 const stars = [
-  ["5%", "12%", 2, "0s"], ["12%", "42%", 3, "1.4s"], ["18%", "19%", 2, "2.1s"],
-  ["24%", "70%", 3, "0.6s"], ["31%", "9%", 2, "2.8s"], ["38%", "55%", 2, "1.1s"],
-  ["44%", "31%", 3, "2.4s"], ["51%", "15%", 2, "0.3s"], ["57%", "76%", 3, "1.8s"],
-  ["63%", "43%", 2, "2.6s"], ["69%", "7%", 3, "0.9s"], ["75%", "63%", 2, "1.5s"],
-  ["82%", "26%", 3, "2.9s"], ["89%", "48%", 2, "0.5s"], ["94%", "17%", 3, "2s"]
+  ["3%", "28%", 1, "1.7s"], ["5%", "12%", 2, "0s"], ["7%", "77%", 2, "2.5s"],
+  ["10%", "57%", 1, "0.8s"], ["12%", "42%", 3, "1.4s"], ["14%", "91%", 1, "2.2s"],
+  ["18%", "19%", 2, "2.1s"], ["20%", "63%", 1, "0.2s"], ["22%", "35%", 2, "3s"],
+  ["24%", "70%", 3, "0.6s"], ["27%", "48%", 1, "1.9s"], ["29%", "88%", 2, "1.2s"],
+  ["31%", "9%", 2, "2.8s"], ["34%", "27%", 1, "0.5s"], ["36%", "75%", 2, "2.3s"],
+  ["38%", "55%", 2, "1.1s"], ["41%", "13%", 1, "2.7s"], ["44%", "31%", 3, "2.4s"],
+  ["46%", "67%", 1, "0.9s"], ["49%", "86%", 2, "1.6s"], ["51%", "15%", 2, "0.3s"],
+  ["54%", "49%", 1, "2.9s"], ["57%", "76%", 3, "1.8s"], ["59%", "25%", 2, "0.7s"],
+  ["61%", "92%", 1, "2s"], ["63%", "43%", 2, "2.6s"], ["66%", "61%", 1, "1.3s"],
+  ["69%", "7%", 3, "0.9s"], ["71%", "34%", 1, "2.1s"], ["73%", "83%", 2, "0.4s"],
+  ["75%", "63%", 2, "1.5s"], ["78%", "14%", 1, "2.8s"], ["80%", "54%", 2, "1s"],
+  ["82%", "26%", 3, "2.9s"], ["85%", "71%", 1, "0.1s"], ["87%", "38%", 2, "2.4s"],
+  ["89%", "48%", 2, "0.5s"], ["91%", "88%", 1, "1.8s"], ["94%", "17%", 3, "2s"],
+  ["97%", "65%", 2, "1.1s"], ["1%", "47%", 1, "0.6s"], ["4%", "5%", 1, "2.6s"],
+  ["6%", "94%", 1, "1.1s"], ["9%", "31%", 1, "2.2s"], ["11%", "68%", 1, "0.4s"],
+  ["13%", "4%", 1, "1.5s"], ["15%", "52%", 1, "2.9s"], ["17%", "82%", 1, "0.7s"],
+  ["19%", "44%", 1, "1.8s"], ["21%", "6%", 1, "0.3s"], ["23%", "96%", 1, "2.4s"],
+  ["25%", "18%", 1, "1.4s"], ["26%", "59%", 1, "0.1s"], ["28%", "39%", 1, "2.7s"],
+  ["30%", "74%", 1, "0.9s"], ["32%", "47%", 1, "2s"], ["33%", "19%", 1, "1.2s"],
+  ["35%", "93%", 1, "2.5s"], ["37%", "36%", 1, "0.5s"], ["39%", "65%", 1, "1.7s"],
+  ["40%", "5%", 1, "2.3s"], ["42%", "81%", 1, "0.8s"], ["43%", "46%", 1, "1.9s"],
+  ["45%", "22%", 1, "0.2s"], ["47%", "94%", 1, "2.8s"], ["48%", "57%", 1, "1s"],
+  ["50%", "38%", 1, "2.1s"], ["52%", "73%", 1, "0.4s"], ["53%", "4%", 1, "1.6s"],
+  ["55%", "31%", 1, "2.6s"], ["56%", "91%", 1, "0.7s"], ["58%", "56%", 1, "1.4s"],
+  ["60%", "18%", 1, "0.1s"], ["62%", "81%", 1, "2.5s"], ["64%", "30%", 1, "1.2s"],
+  ["65%", "96%", 1, "1.9s"], ["67%", "51%", 1, "0.5s"], ["68%", "15%", 1, "2.7s"],
+  ["70%", "69%", 1, "0.8s"], ["72%", "44%", 1, "1.7s"], ["74%", "97%", 1, "2.2s"],
+  ["76%", "36%", 1, "0.3s"], ["77%", "79%", 1, "2.9s"], ["79%", "3%", 1, "1.1s"],
+  ["81%", "59%", 1, "2s"], ["83%", "92%", 1, "0.6s"], ["84%", "11%", 1, "1.5s"],
+  ["86%", "47%", 1, "2.4s"], ["88%", "76%", 1, "0.9s"], ["90%", "29%", 1, "1.8s"],
+  ["92%", "58%", 1, "0.2s"], ["93%", "4%", 1, "2.6s"], ["95%", "83%", 1, "1.3s"],
+  ["96%", "41%", 1, "2.1s"], ["98%", "9%", 1, "0.7s"], ["99%", "92%", 1, "1.6s"]
 ] as const;
 
 function TrackDiagram({ activeStation }: { activeStation: string | null }) {
@@ -108,7 +135,7 @@ function TrackDiagram({ activeStation }: { activeStation: string | null }) {
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">01 · Network view</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Network view</p>
           <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Tracks overview</h2>
         </div>
         <div className="space-y-1 text-right text-xs text-slate-300">
@@ -229,7 +256,7 @@ function Calendar({
 
   return (
     <section className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400"> 02· Maintenance calendar</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Maintenance calendar</p>
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-2">
           <button className="calendar-arrow" onClick={() => onMonthChange(-1)} aria-label="Previous month">←</button>
@@ -427,7 +454,7 @@ const publicScheduleFiles = [
 function PublicScheduleDownloads() {
   return (
     <section className="editorial-card c151-card mt-5 rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">03· Download</p>
+      <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Download</p>
       <div className="mt-1 flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
         <div>
           <h2 className="section-heading mt-1 text-xl font-bold leading-tight text-white">Schedule files</h2>
@@ -619,10 +646,10 @@ export default function App() {
 
   return (
     <main className="rail-editorial relative min-h-screen overflow-hidden px-3 py-3 text-slate-100 sm:px-5 sm:py-5">
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-0 opacity-60">
+      <div aria-hidden="true" className="pointer-events-none fixed inset-0 z-[1]">
         <TrainScene />
       </div>
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-[1]">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 z-0">
         {stars.map(([left, top, size, delay]) => (
           <span key={`${left}-${top}`} className="twinkle-star" style={{ left, top, width: size, height: size, animationDelay: delay }} />
         ))}
@@ -675,7 +702,7 @@ export default function App() {
         ) : (
           <section className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_0.8fr]" aria-label="Schedule setup">
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">04 · Build schedule</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Build schedule</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Demand-book upload</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Drag in all eight official CSVs for the scheduling pipeline.</p>
               <div className="mt-4">
@@ -694,7 +721,7 @@ export default function App() {
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">05 · Recovery</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Recovery</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
               <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
@@ -702,7 +729,7 @@ export default function App() {
             </div>
 
             <div className="editorial-card c151-card rounded-2xl border border-slate-700/80 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
-              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">06 · Optimise</p>
+              <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Optimise</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
