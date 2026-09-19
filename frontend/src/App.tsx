@@ -597,11 +597,6 @@ export default function App() {
 
   const startRun = async () => {
     if (!scheduleInputReady || runBusy) return;
-    const scenarioCapability = capabilities?.scenarios.find((item) => item.scenario === scenario);
-    if (!scenarioCapability?.available) {
-      setRefreshNotice(scenarioCapability?.message ?? "Checking the active solver capabilities. Please try again in a moment.");
-      return;
-    }
     setRunBusy(true);
     setRun(null);
     const runFiles = demandFiles;
@@ -796,7 +791,7 @@ export default function App() {
               </div>
               <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
               <button
-                disabled={!scheduleInputReady || runBusy || !capabilities?.scenarios.find((item) => item.scenario === scenario)?.available}
+                disabled={!scheduleInputReady || runBusy}
                 onClick={() => void startRun()}
                 aria-busy={runBusy}
                 className="mt-5 inline-flex w-full items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3 font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:bg-slate-700 disabled:text-slate-400"
