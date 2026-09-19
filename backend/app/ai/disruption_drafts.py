@@ -8,6 +8,7 @@ request but cannot execute it.
 from __future__ import annotations
 
 import json
+import logging
 import os
 from typing import Protocol
 from uuid import uuid4
@@ -25,6 +26,9 @@ from app.api.schemas import (
     SupplyOverride,
 )
 from app.api.run_service import RunRecord
+
+
+logger = logging.getLogger(__name__)
 
 
 class DisruptionDraftUnavailable(RuntimeError):
@@ -110,6 +114,13 @@ class VertexDraftGenerator:
                 return parsed
             return response.text or ""
         except Exception as error:
+            # Log only operational metadata. Prompts, reference data and any
+            # model response must never enter application logs.
+            logger.warning(
+                "vertex_draft_generation_failed error_type=%s status=%s",
+                type(error).__name__,
+                getattr(error, "status", getattr(error, "code", None)),
+            )
             raise DisruptionDraftUnavailable("Vertex AI could not produce a disruption draft.") from error
 
 
