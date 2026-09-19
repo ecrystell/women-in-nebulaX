@@ -35,6 +35,7 @@ from app.api.schemas import (
     ScenarioChangeDraftStatus,
     Schedule,
     ScheduleDiff,
+    SolverDiagnostics,
     SubmissionManifest,
     SubmissionPackageSummary,
     ValidationReport,
@@ -47,7 +48,7 @@ from app.api.schemas import CopilotMode, EvidenceEnvelope
 from app.exports.csv_writer import write_submission
 from app.validation.adapter import OfficialValidatorAdapter
 from app.validation.preflight import load_submission, preparation_report, validate_schedule
-from app.api.solver_contract import ScenarioUnavailable, SolverInputInvalid, SolverUnavailable
+from app.api.solver_contract import ScenarioUnavailable, SolverInputInvalid, SolverTimedOut, SolverUnavailable
 
 
 def _public_data_root() -> Path:
@@ -75,6 +76,7 @@ def utc_now() -> datetime:
 class SolverOutput:
     schedule: ScenarioSchedule
     schedule_diff: ScheduleDiff | None = None
+    diagnostics: SolverDiagnostics | None = None
 
 
 class SolverAdapter(Protocol):
@@ -83,6 +85,7 @@ class SolverAdapter(Protocol):
         prepared_instance: PreparedInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
+        baseline_schedule: ScenarioSchedule | None = None,
     ) -> SolverOutput: ...
 
 
@@ -124,6 +127,7 @@ class UnavailableSolver:
         prepared_instance: PreparedInstance,
         scenario: Scenario,
         scenario_change: ScenarioChange | None = None,
+        baseline_schedule: ScenarioSchedule | None = None,
     ) -> SolverOutput:
         raise SolverUnavailable(
             "The CP-SAT solver is not connected yet. This input was parsed but no candidate schedule was created."
@@ -148,6 +152,7 @@ class RunRecord:
     schedule: Schedule | None = None
     validation_report: ValidationReport | None = None
     schedule_diff: ScheduleDiff | None = None
+    solver_diagnostics: SolverDiagnostics | None = None
     problem: RunProblem | None = None
     demo: bool = False
     demo_notice: str | None = None
@@ -168,6 +173,7 @@ class RunRecord:
             schedule=self.schedule,
             validation_report=self.validation_report,
             schedule_diff=self.schedule_diff,
+            solver_diagnostics=self.solver_diagnostics,
             problem=self.problem,
             demo=self.demo,
             demo_notice=self.demo_notice,
@@ -306,7 +312,11 @@ class RunService:
             )
             for scenario in (Scenario.A, Scenario.B, Scenario.C)
         ]
-        recovery_available = bool(getattr(self.solver, "supports_recovery", False))
+        recovery_declared = getattr(self.solver, "recovery_scenarios", ())
+        recovery_scenarios = [
+            Scenario(value) if isinstance(value, str) else value for value in recovery_declared
+        ]
+        recovery_available = bool(getattr(self.solver, "supports_recovery", False) and recovery_scenarios)
         public_demo = self.public_fixture_available()
         return CapabilityReport(
             scenarios=scenarios,
@@ -314,10 +324,11 @@ class RunService:
                 available=recovery_available,
                 code=None if recovery_available else "recovery_solver_unavailable",
                 message=(
-                    "The active solver supports confirmed recovery changes."
+                    "The active solver supports confirmed Scenario C recovery changes."
                     if recovery_available
                     else "Recovery optimisation is not connected yet; no revised live schedule can be created."
                 ),
+                supported_scenarios=recovery_scenarios,
             ),
             public_demo_recovery=FeatureCapability(
                 available=public_demo,
@@ -482,6 +493,73 @@ class RunService:
         record.last_accessed_at = utc_now()
         return record
 
+    @staticmethod
+    def _supply_overrides(record: RunRecord) -> dict[tuple[str, int], int]:
+        return {
+            (item.location_id, item.week): item.supply_capacity
+            for item in (record.scenario_change.supply_overrides if record.scenario_change else [])
+        }
+
+    @staticmethod
+    def _build_schedule_diff(
+        baseline: Schedule,
+        recovered: Schedule,
+        *,
+        baseline_report: ValidationReport,
+        recovered_report: ValidationReport,
+    ) -> ScheduleDiff:
+        before_by_key = {(item.activity_id, item.access_seq): item for item in baseline.placements}
+        after_by_key = {(item.activity_id, item.access_seq): item for item in recovered.placements}
+        changes: list[PlacementChange] = []
+        unchanged = 0
+        moved = 0
+        for key in sorted(before_by_key.keys() | after_by_key.keys()):
+            before = before_by_key.get(key)
+            after = after_by_key.get(key)
+            if before is None:
+                changes.append(PlacementChange(key={"activity_id": key[0], "access_seq": key[1]}, kind="added", after=after))
+                continue
+            if after is None:
+                changes.append(PlacementChange(key={"activity_id": key[0], "access_seq": key[1]}, kind="removed", before=before))
+                continue
+            changed_fields = [
+                field
+                for field in ("week", "access_night", "eclo")
+                if getattr(before, field) != getattr(after, field)
+            ]
+            if sorted(
+                (item.location_id, item.co_share_group) for item in before.occupancies
+            ) != sorted((item.location_id, item.co_share_group) for item in after.occupancies):
+                changed_fields.append("occupancies")
+            if changed_fields:
+                moved += 1
+                kind = "moved"
+            else:
+                unchanged += 1
+                kind = "unchanged"
+            changes.append(
+                PlacementChange(
+                    key={"activity_id": key[0], "access_seq": key[1]},
+                    kind=kind,
+                    before=before,
+                    after=after,
+                    changed_fields=changed_fields,
+                )
+            )
+        baseline_score = float(baseline_report.soft_scores.get("objective_score", 0.0))
+        recovered_score = float(recovered_report.soft_scores.get("objective_score", 0.0))
+        baseline_overrun = sum(item.overrun_days for item in baseline.contract_results)
+        recovered_overrun = sum(item.overrun_days for item in recovered.contract_results)
+        return ScheduleDiff(
+            baseline_schedule_id=baseline.schedule_id,
+            recovered_schedule_id=recovered.schedule_id,
+            placement_changes=changes,
+            unchanged_count=unchanged,
+            moved_count=moved,
+            score_delta={"objective_score": recovered_score - baseline_score},
+            completion_delta={"overrun_days": float(recovered_overrun - baseline_overrun)},
+        )
+
     def dispatch(self, run_id: str) -> None:
         record = self.store.get(run_id)
         if record is None:
@@ -499,8 +577,27 @@ class RunService:
             record.updated_at = utc_now()
             return
         record.prepared_instance = preparation.prepared
+        baseline: RunRecord | None = None
+        if record.recovery_of_run_id:
+            baseline = self.store.get(record.recovery_of_run_id)
+            if baseline is None or baseline.schedule is None:
+                record.status = RunStatus.FAILED
+                record.problem = RunProblem(
+                    code="recovery_baseline_unavailable",
+                    message="The baseline schedule expired before recovery could start.",
+                )
+                record.updated_at = utc_now()
+                return
         try:
-            output = self.solver.solve(preparation.prepared, record.scenario, record.scenario_change)
+            if baseline and baseline.schedule:
+                output = self.solver.solve(
+                    preparation.prepared,
+                    record.scenario,
+                    record.scenario_change,
+                    baseline.schedule.to_domain(),
+                )
+            else:
+                output = self.solver.solve(preparation.prepared, record.scenario, record.scenario_change)
         except SolverUnavailable as error:
             record.status = RunStatus.BLOCKED
             record.problem = RunProblem(code="solver_unavailable", message=str(error))
@@ -516,7 +613,14 @@ class RunService:
             record.problem = RunProblem(code="solver_input_invalid", message=str(error))
             record.updated_at = utc_now()
             return
+        except SolverTimedOut as error:
+            record.solver_diagnostics = getattr(self.solver, "last_diagnostics", None)
+            record.status = RunStatus.FAILED
+            record.problem = RunProblem(code="solver_timeout", message=str(error))
+            record.updated_at = utc_now()
+            return
         except Exception as error:  # Adapter errors are returned as a safe run failure.
+            record.solver_diagnostics = getattr(self.solver, "last_diagnostics", None)
             record.status = RunStatus.FAILED
             record.problem = RunProblem(code="solver_failed", message=str(error))
             record.updated_at = utc_now()
@@ -529,10 +633,25 @@ class RunService:
             input_instance_id=record.input_instance.source.instance_id,
             generated_at=utc_now(),
         )
-        record.schedule_diff = output.schedule_diff
+        record.solver_diagnostics = output.diagnostics or getattr(self.solver, "last_diagnostics", None)
+        overrides = self._supply_overrides(record)
         record.validation_report = ValidationReport.from_domain(
-            validate_schedule(preparation.prepared, output.schedule), schedule_id=schedule_id
+            validate_schedule(preparation.prepared, output.schedule, overrides), schedule_id=schedule_id
         )
+
+        if baseline and baseline.schedule and baseline.prepared_instance:
+            baseline_report = ValidationReport.from_domain(
+                validate_schedule(preparation.prepared, baseline.schedule.to_domain(), overrides),
+                schedule_id=baseline.schedule.schedule_id,
+            )
+            record.schedule_diff = self._build_schedule_diff(
+                baseline.schedule,
+                record.schedule,
+                baseline_report=baseline_report,
+                recovered_report=record.validation_report,
+            )
+        else:
+            record.schedule_diff = output.schedule_diff
 
         if record.validation_report.hard_violations:
             record.status = RunStatus.FAILED

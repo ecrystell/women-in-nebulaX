@@ -16,3 +16,7 @@ class ScenarioUnavailable(RuntimeError):
 
 class SolverInputInvalid(RuntimeError):
     """Cross-file or topology validation rejected a parseable input instance."""
+
+
+class SolverTimedOut(RuntimeError):
+    """CP-SAT exhausted its approved run budget without a fresh candidate."""

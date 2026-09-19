@@ -203,17 +203,20 @@ remain errors. A ready draft can replay the fixed demo only.
 For a completed live run, a controller may also upload a replacement official
 `04_LOCATION_SUPPLY.csv`. For Rails compares it with the base input, accepts
 capacity-only differences, expands those changes across the planning horizon,
-and opens an editable review draft for week scoping and placement locks. This
-does not create a recovered schedule until the locked-work recovery solver is
-connected. Natural-language parsing remains public-demo-only, so hidden upload
-data is never sent to Gemini. Real disruption recovery remains unavailable
-until the locked-work recovery solver is wired in.
+and opens an editable review draft for week scoping and placement locks. A
+confirmed review on a successful live **Scenario C** run invokes the delivered
+locked-work recovery model. The recovered candidate is preflighted against the
+changed supply, receives a before/after diff, and is exportable only when it is
+locally clean. A/B recovery remains unavailable. Natural-language parsing
+remains public-demo-only, so hidden upload data is never sent to Gemini.
 
-### Scenario A/C solver (implemented)
+### Scenario A/B/C solver (implemented)
 
 Run the CP-SAT solver directly without starting the frontend. Scenario A keeps
-its existing strict-supply/no-ECLO policy; Scenario C adds the published
-one-excess-possession allowance, ECLO, and two-week per-line ECLO windows.
+its existing strict-supply/no-ECLO policy; Scenario B enforces its strict
+completion policy; Scenario C adds the published one-excess-possession
+allowance, ECLO, and two-week per-line ECLO windows. The hosted API exposes all
+three scenarios with a 300-second maximum CP-SAT solve budget.
 
 Scenario A:
 
@@ -236,7 +239,7 @@ python -m app.solver `
   --workers 8
 ```
 
-The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. If the output folder already contains a locally valid schedule, rerunning the same command reconstructs its hidden CP-SAT state and uses it as a complete warm start. The retained organiser-confirmed Scenario C public incumbent scores `158.6`. A clean regenerated output remains **unverified** until the organiser/reference validator is run. Scenario B is available through the direct solver but is not yet exposed by the production-gated hosted API.
+The command writes `SCHEDULE_ACCESS.csv`, `SCHEDULE_OCCUPANCY.csv`, and `RESULTS.csv`, then runs the local preflight checks. If the output folder already contains a locally valid schedule, rerunning the same command reconstructs its hidden CP-SAT state and uses it as a complete warm start. The retained organiser-confirmed Scenario C public incumbent scores `158.6`. A clean regenerated output remains **unverified** until the organiser/reference validator is run. The API exposes CP-SAT status, elapsed solve time, and the configured limit as non-authoritative execution evidence.
 
 ### One-minute Scenario C recovery
 

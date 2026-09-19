@@ -531,7 +531,10 @@ def create_recovery(
         )
     service = get_service(request)
     base_record = _authorize(request, run_id)
-    if not service.capability_report(draft_parser_available=get_draft_service(request).available).recovery.available:
+    recovery_capability = service.capability_report(
+        draft_parser_available=get_draft_service(request).available
+    ).recovery
+    if not recovery_capability.available:
         raise ApiException(
             409,
             "recovery_solver_unavailable",
@@ -549,6 +552,12 @@ def create_recovery(
             422,
             "scenario_change_invalid",
             "The recovery request must reference the base run's candidate schedule and scenario.",
+        )
+    if base.scenario not in recovery_capability.supported_scenarios:
+        raise ApiException(
+            409,
+            "recovery_scenario_unavailable",
+            f"Recovery optimisation is currently available only for Scenario C, not Scenario {base.scenario.value}.",
         )
     record = service.create_recovery(run_id, change)
     if record is None:

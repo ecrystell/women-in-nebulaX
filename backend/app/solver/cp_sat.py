@@ -28,6 +28,7 @@ from app.domain.models import (
     Scenario,
     ScenarioSchedule,
 )
+from app.domain.preprocessing import PreparedInstance
 from app.exports.csv_writer import write_submission
 from app.validation.preflight import _Preflight, validate_schedule
 
@@ -85,6 +86,23 @@ class CpSatRailSolver:
         # contract requires ``schedule`` and optional ``schedule_diff`` only.
         schedule = self.solve_bundle(input_instance.to_bundle(), scenario, scenario_change)
         return SimpleNamespace(schedule=schedule, schedule_diff=None)
+
+    def solve_prepared(
+        self,
+        prepared: PreparedInstance,
+        scenario: Scenario,
+        scenario_change: ScenarioChange | None = None,
+        *,
+        baseline: ScenarioSchedule | None = None,
+    ) -> ScenarioSchedule:
+        """Solve an already cross-file-validated instance at the API boundary.
+
+        ``PreparedInstance`` is the domain handoff used by the web run path.
+        Keeping this entry point explicit prevents routes from passing raw CSV
+        models into the optimiser and ensures recovery uses the same canonical
+        instance that the API preflight received.
+        """
+        return self.solve_bundle(prepared.instance, scenario, scenario_change, baseline=baseline)
 
     def solve_recovery(
         self,

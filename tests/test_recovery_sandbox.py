@@ -89,14 +89,10 @@ def test_capabilities_and_public_demo_are_explicitly_separate_from_live_runs() -
     body = capabilities.json()
     scenarios = {item["scenario"]: item for item in body["scenarios"]}
     assert scenarios["A"]["available"] is True
-    assert scenarios["B"] == {
-        "scenario": "B",
-        "available": False,
-        "code": "scenario_unavailable",
-        "message": scenarios["B"]["message"],
-    }
-    assert scenarios["C"]["available"] is False
-    assert body["recovery"]["code"] == "recovery_solver_unavailable"
+    assert scenarios["B"]["available"] is True
+    assert scenarios["C"]["available"] is True
+    assert body["recovery"]["available"] is True
+    assert body["recovery"]["supported_scenarios"] == ["C"]
     assert body["public_demo_recovery"]["available"] is True
     assert body["disruption_drafts"]["available"] is True
 
@@ -199,18 +195,21 @@ def test_draft_parser_rejects_live_uploads_and_unsafe_or_invalid_model_output() 
     assert forbidden_live.status_code == 409
     assert forbidden_live.json()["error"]["code"] == "public_demo_only"
 
+    live_view = client.get(f"/api/v1/runs/{live.json()['run_id']}")
+    assert live_view.status_code == 200
+    assert live_view.json()["status"] == "succeeded"
     real_recovery = client.post(
         f"/api/v1/runs/{live.json()['run_id']}/recovery",
         json={
-            "change_id": "confirmed-but-unavailable",
-            "base_schedule_id": "not-used-while-recovery-is-unavailable",
+            "change_id": "confirmed-but-wrong-scenario",
+            "base_schedule_id": live_view.json()["schedule"]["schedule_id"],
             "scenario": "A",
             "requested_by": "controller",
             "confirmed_at": "2026-09-19T00:00:00Z",
         },
     )
     assert real_recovery.status_code == 409
-    assert real_recovery.json()["error"]["code"] == "recovery_solver_unavailable"
+    assert real_recovery.json()["error"]["code"] == "recovery_scenario_unavailable"
 
     demo = create_demo(client)
     unsafe = StubDraftGenerator({**ready_payload(), "rationale": "This schedule is feasible."})
@@ -269,7 +268,7 @@ def test_supply_csv_creates_editable_all_week_draft_for_a_live_run() -> None:
     assert edited.json()["change"]["supply_overrides"][0]["week"] == 5
     confirmation = client.post(f"/api/v1/runs/{run_id}/recovery-drafts/{edited.json()['draft_id']}/confirm")
     assert confirmation.status_code == 409
-    assert confirmation.json()["error"]["code"] == "recovery_solver_unavailable"
+    assert confirmation.json()["error"]["code"] == "recovery_scenario_unavailable"
 
 
 def test_supply_csv_rejects_non_capacity_changes_and_noops() -> None:

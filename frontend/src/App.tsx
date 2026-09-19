@@ -479,6 +479,39 @@ function PublicScheduleDownloads() {
   );
 }
 
+function RecoveryOutcome({ run }: { run: RunView | null }) {
+  const diff = run?.schedule_diff;
+  if (!run || run.demo || !diff) return null;
+  const diagnostics = run.solver_diagnostics;
+  const changed = diff.placement_changes.filter((item) => item.kind !== "unchanged");
+  const label = diagnostics?.recovery_source === "reoptimized"
+    ? "Re-optimised"
+    : diagnostics?.recovery_source === "incumbent_not_worse"
+      ? "Kept equally good incumbent"
+      : diagnostics?.recovery_source === "incumbent_fallback"
+        ? "Safe incumbent fallback"
+        : "Recovery result";
+
+  return (
+    <section className="editorial-card c151-card mt-5 rounded-2xl border border-emerald-300/30 bg-emerald-300/5 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-200">Recovery outcome</p>
+          <h2 className="section-heading mt-1 text-xl font-bold text-white">{label}</h2>
+          <p className="mt-1 text-sm leading-6 text-slate-300">Scenario C was compared with its baseline under the confirmed change. This local result remains unverified until the organiser checks these exact exports.</p>
+        </div>
+        <span className="rounded-full border border-emerald-300/35 bg-emerald-300/10 px-3 py-1 text-xs font-bold text-emerald-100">{run.validation_report?.status ?? "unverified"}</span>
+      </div>
+      <div className="mt-4 grid gap-2 sm:grid-cols-3">
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Moved work</p><p className="mt-1 text-2xl font-bold text-white">{diff.moved_count}</p><p className="text-xs text-slate-400">placements changed</p></div>
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Kept work</p><p className="mt-1 text-2xl font-bold text-white">{diff.unchanged_count}</p><p className="text-xs text-slate-400">placements unchanged</p></div>
+        <div className="rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-[11px] font-bold uppercase tracking-wider text-slate-500">Solver</p><p className="mt-1 text-lg font-bold text-white">{diagnostics?.status ?? "Recorded"}</p><p className="text-xs text-slate-400">{diagnostics ? `${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s` : "execution details unavailable"}</p></div>
+      </div>
+      {changed.length > 0 && <div className="mt-4 rounded-xl border border-slate-700 bg-slate-950/55 p-3"><p className="text-xs font-bold uppercase tracking-wider text-slate-400">Changed placements</p><ul className="mt-2 max-h-36 space-y-1 overflow-y-auto text-xs text-slate-300">{changed.slice(0, 25).map((item) => <li key={`${item.key.activity_id}-${item.key.access_seq}`}><b>{item.key.activity_id}</b> access {item.key.access_seq}: {item.kind}{item.changed_fields.length ? ` (${item.changed_fields.join(", ")})` : ""}</li>)}</ul>{changed.length > 25 && <p className="mt-2 text-xs text-slate-500">Showing 25 of {changed.length} changed placements.</p>}</div>}
+    </section>
+  );
+}
+
 function CopilotButton() {
   const [open, setOpen] = useState(false);
   const [prompt, setPrompt] = useState("");
@@ -576,12 +609,16 @@ export default function App() {
     try {
       let current = await forRailsApi.createRun(scenario, runFiles);
       setRun(current);
-      for (let attempt = 0; attempt < 90 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
+      for (let attempt = 0; attempt < 330 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
         current = await forRailsApi.getRun(current.run_id);
         setRun(current);
       }
-      setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.`);
+      const diagnostics = current.solver_diagnostics;
+      const solverEvidence = diagnostics
+        ? ` CP-SAT ${diagnostics.status} in ${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s.`
+        : "";
+      setRefreshNotice(`Scenario ${scenario} run is ${current.status}. Review its local evidence below.${solverEvidence}`);
       setDemandFiles([]);
       setPage("overview");
     } catch (error) {
@@ -636,7 +673,19 @@ export default function App() {
     if (!run || runBusy) return;
     setRunBusy(true);
     try {
-      setRun(await forRailsApi.confirmRecoveryDraft(run.run_id, draftId));
+      let current = await forRailsApi.confirmRecoveryDraft(run.run_id, draftId);
+      setRun(current);
+      setRefreshNotice("Scenario C recovery is running with the confirmed controller changes.");
+      for (let attempt = 0; attempt < 330 && (current.status === "accepted" || current.status === "running"); attempt += 1) {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 1000));
+        current = await forRailsApi.getRun(current.run_id);
+        setRun(current);
+      }
+      const diagnostics = current.solver_diagnostics;
+      const evidence = diagnostics
+        ? ` CP-SAT ${diagnostics.status} in ${diagnostics.wall_time_seconds.toFixed(1)}s of ${diagnostics.time_limit_seconds}s.`
+        : "";
+      setRefreshNotice(`Scenario C recovery is ${current.status}.${evidence}`);
     } catch (error) {
       setRefreshNotice(error instanceof ForRailsApiError ? error.message : "Recovery could not be started.");
     } finally {
@@ -687,6 +736,7 @@ export default function App() {
               />
             </div>
             <PublicScheduleDownloads />
+            <RecoveryOutcome run={run} />
             <RecoverySandbox
               run={run}
               capabilities={capabilities}
@@ -723,7 +773,7 @@ export default function App() {
             <div className="editorial-card c151-card rounded-2xl border border-red-400/25 bg-slate-950/75 p-5 shadow-xl shadow-slate-950/40 backdrop-blur">
               <p className="text-xs font-bold uppercase tracking-[0.18em] text-red-400">Recovery</p>
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Recovery sandbox</h2>
-              <p className="mt-2 text-sm leading-6 text-slate-400">Real recovery optimisation is not connected yet. Use the public fixture demo to review the future controller workflow safely.</p>
+              <p className="mt-2 text-sm leading-6 text-slate-400">Scenario C recovery is available after a successful live C run. The public fixture remains a separate, fixed demonstration.</p>
               <button disabled={!capabilities?.public_demo_recovery.available || runBusy} onClick={() => void openPublicDemo()} className="mt-4 rounded-xl border border-red-300/40 bg-red-500/10 px-4 py-3 text-sm font-bold text-red-100 transition hover:bg-red-500/20 disabled:cursor-not-allowed disabled:border-slate-700 disabled:bg-slate-800 disabled:text-slate-500">Open public demo</button>
               <p className="mt-3 text-xs text-slate-500">{capabilities?.recovery.message ?? "Checking recovery capability…"}</p>
             </div>
@@ -733,16 +783,19 @@ export default function App() {
               <h2 className="section-heading mt-1 text-xl font-bold text-white">Scenario control</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">Choose the objective before running a schedule refresh.</p>
               <div className="mt-4 grid grid-cols-3 gap-2">
-                {(["A", "B", "C"] as Scenario[]).map((option) => (
+                {(["A", "B", "C"] as Scenario[]).map((option) => {
+                  const available = capabilities?.scenarios.find((item) => item.scenario === option)?.available ?? false;
+                  return (
                   <button
                     key={option}
-                    disabled={runBusy}
+                    disabled={runBusy || !available}
                     onClick={() => setScenario(option)}
                     className={`rounded-lg border px-2 py-3 text-sm font-black transition disabled:cursor-not-allowed disabled:border-slate-800 disabled:bg-slate-900/50 disabled:text-slate-600 ${scenario === option ? "border-red-400 bg-red-500 text-white shadow-lg shadow-red-500/20" : "border-slate-700 bg-slate-900 text-slate-300 hover:border-red-500"}`}
                   >
                     {option}
                   </button>
-                ))}
+                  );
+                })}
               </div>
               <p className="mt-2 text-xs text-slate-500">A: strict supply · B: strict schedule · C: balanced</p>
               <button
